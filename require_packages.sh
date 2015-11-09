@@ -92,7 +92,8 @@ function aptitude_from_list()
 #
 # Check the distribution version of Debian
 #
-dist=`lsb_release -c | awk '{print $2}'`
+# 
+dist=`python2.7 /usr/bin/lsb_release -c | awk '{print $2}'`
 #echo $version
 
 # add logic to install some packa
