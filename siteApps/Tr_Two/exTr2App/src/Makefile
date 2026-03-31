@@ -14,6 +14,11 @@ DBD += exTr2.dbd
 
 # exTr2.dbd will be made up from these files:
 exTr2_DBD += base.dbd
+exTr2_DBD += calc.dbd
+
+# Add all the support libraries needed by this IOC
+#tr3_LIBS += xxx
+exTr2_LIBS += calc
 
 # Include dbd files from all support applications:
 #exTr2_DBD += xxx.dbd

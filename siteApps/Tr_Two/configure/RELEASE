@@ -30,6 +30,7 @@
 
 # EPICS_BASE should appear last so earlier modules can override stuff:
 EPICS_BASE = /home/ctrluser/epics/7.0.8/base
+CALC = /home/ctrluser/epics/7.0.8/epicsLibs/synApps/support/calc-R3-7-5
 
 # Set RULES here if you want to use build rules from somewhere
 # other than EPICS_BASE:

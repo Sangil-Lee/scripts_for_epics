@@ -69,7 +69,8 @@
 # [1-1] 온도 입력 (섭씨)
 #   - 운전자가 caput 으로 값을 넣으면 처리 시작
 #   - 처리가 끝나면 FLNK → TempFahrenheit 로 이동
-record(ai, "$(P):TempRaw") {
+record(ai, "$(P):TempRaw") 
+{
     field(DESC, "Temperature input (Celsius)")
     field(EGU,  "degC")
     field(PREC, "1")
@@ -280,7 +281,8 @@ record(calc, "$(P):Mod10") {
 # [3-5] 짝수/홀수 문자열 메시지 (scalcout 레코드)
 #   - A 에 IsEven 결과(0 또는 1)를 읽어서
 #   - A=1 이면 "Even", A=0 이면 "Odd" 를 OSV(출력 문자열)에 생성
-record(scalcout, "$(P):TickMsg") {
+record(scalcout, "$(P):TickMsg") 
+{
     field(DESC, "Even/Odd message")
     field(INPA, "$(P):IsEven NPP")
     field(AA,   "Even")
