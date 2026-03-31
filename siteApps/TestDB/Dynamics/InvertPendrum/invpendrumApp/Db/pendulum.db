@@ -1,0 +1,101 @@
+# --- 1. Parameters ---
+record(ao, "$(P)Param:M")  { field(VAL, "1.0") field(PINI, "YES") field(DESC, "Cart Mass") }
+record(ao, "$(P)Param:m")  { field(VAL, "0.1") field(PINI, "YES") field(DESC, "Pole Mass") }
+record(ao, "$(P)Param:l")  { field(VAL, "0.5") field(PINI, "YES") field(DESC, "Length") }
+record(ao, "$(P)Param:g")  { field(VAL, "9.8") field(PINI, "YES") field(DESC, "Gravity") }
+record(ao, "$(P)Param:dt") { field(VAL, "0.05") field(PINI, "YES") field(DESC, "Time Step") }
+
+# --- 2. Input / Output ---
+record(ao, "$(P)In:Force") {
+    field(DESC, "Control Force")
+    field(VAL,  "0.0")
+    field(PREC, "3")
+}
+
+record(bo, "$(P)Cmd:Reset") {
+    field(ZNAM, "Run")
+    field(ONAM, "Reset")
+    field(VAL,  "0")
+}
+
+# --- 3. State Variables (Storage) ---
+record(ai, "$(P)State:X")      { field(VAL, "0") field(PREC, "3") }
+record(ai, "$(P)State:dX")     { field(VAL, "0") field(PREC, "3") }
+record(ai, "$(P)State:Theta")  { field(VAL, "0") field(PREC, "3") }
+record(ai, "$(P)State:dTheta") { field(VAL, "0") field(PREC, "3") }
+
+# --- 4. Physics Engine (aSub) ---
+record(aSub, "$(P)Sim:Model") {
+    field(SCAN, ".05 second")  # 20Hz (Must match Param:dt)
+    field(SNAM, "simPendulumProcess")
+
+    # Inputs
+    field(INPA, "$(P)In:Force")
+    field(FTA, "DOUBLE")
+    field(NOVA, "1")
+
+    field(INPB, "$(P)Cmd:Reset")
+    field(FTB, "DOUBLE")
+    field(NOVB, "1")
+
+    field(INPC, "$(P)Param:M")
+    field(FTC, "DOUBLE")
+    field(NOVC, "1")
+
+    field(INPD, "$(P)Param:m")
+    field(FTD, "DOUBLE")
+    field(NOVD, "1")
+
+    field(INPE, "$(P)Param:l")
+    field(FTE, "DOUBLE")
+    field(NOVE, "1")
+
+    field(INPF, "$(P)Param:g")
+    field(FTF, "DOUBLE")
+    field(NOVF, "1")
+
+    field(INPG, "$(P)Param:dt")
+    field(FTG, "DOUBLE")
+    field(NOVG, "1")
+
+    
+    # Feedback Inputs (Previous State)
+    field(INPH, "$(P)State:X")
+    field(FTH,  "DOUBLE")
+    field(NOVH, "1")
+
+    field(INPI, "$(P)State:dX")
+    field(FTI,  "DOUBLE")
+    field(NOVI, "1")
+
+
+    field(INPJ, "$(P)State:Theta")
+    field(FTJ,  "DOUBLE")
+    field(NOVJ, "1")
+
+    field(INPK, "$(P)State:dTheta")
+    field(FTK,  "DOUBLE")
+    field(NOVK, "1")
+
+    # Data Types (All Double)
+    field(FTH, "DOUBLE") field(FTI, "DOUBLE") 
+    field(FTJ, "DOUBLE") field(FTK, "DOUBLE")
+
+    # Outputs (Calculated Next State)
+    field(OUTA, "$(P)State:X PP")
+    field(FTVA, "DOUBLE")
+    field(NOVA, "1")
+
+    field(OUTB, "$(P)State:dX PP")
+    field(FTVB, "DOUBLE")
+    field(NOVB, "1")
+
+    field(OUTC, "$(P)State:Theta PP")
+    field(FTVC, "DOUBLE")
+    field(NOVC, "1")
+
+    field(OUTD, "$(P)State:dTheta PP")
+    field(FTVD, "DOUBLE")
+    field(NOVD, "1")
+
+}

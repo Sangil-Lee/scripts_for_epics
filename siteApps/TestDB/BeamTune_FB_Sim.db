@@ -1,0 +1,125 @@
+# ------------------------------------------------------------------
+# EPICS Tune Feedback System Simulator
+# Logic: PI Control to stabilize Betatron Tune via Quadrupole
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 운전 설정 (Operation Settings)
+# ==================================================================
+
+# 1-1. 목표 튠 (Target Tune)
+# 가속기 운전의 목표 동작점 (Working Point)
+record(ao, "$(P)$(R)Target") {
+    field(DESC, "Target Betatron Tune")
+    field(VAL,  "0.250")  # 일반적인 목표값
+    field(PREC, "4")
+    field(PINI, "YES")
+}
+
+# 1-2. 피드백 On/Off
+record(bo, "$(P)$(R)FB:Run") {
+    field(DESC, "Feedback Enable")
+    field(ZNAM, "Open Loop")
+    field(ONAM, "Closed Loop")
+    field(VAL,  "0")
+    # 켜거나 끌 때 적분기 초기화 로직 등 연결 가능
+}
+
+# 1-3. 쿼드루폴 자석 설정 (Actuator)
+# 피드백 제어기가 이 값을 변경하여 튠을 조절함
+record(ao, "$(P)$(R)Quad:Set") {
+    field(DESC, "Quadrupole Current")
+    field(EGU,  "A")
+    field(VAL,  "100.0") # 초기 전류
+    field(DRVL, "0")
+    field(DRVH, "200")
+    field(PREC, "3")
+}
+
+# ==================================================================
+# 2. 가상 가속기 모델 (Plant Simulation)
+# ==================================================================
+
+# 2-1. 외부 외란 (Drift & Noise)
+# 전원 장치의 리플이나 지반 진동 등으로 튠이 흔들림
+record(calc, "$(P)$(R)Drift") {
+    field(DESC, "Tune Drift Source")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Drift NPP")
+    
+    # 0.005 크기의 느린 진동(Sin) + 빠른 잡음(Rndm)
+    # A는 시간 카운터 역할
+    field(CALC, "(SIN(A/20)*0.005) + ((RNDM-0.5)*0.001)")
+    
+    # 다음 계산을 위해 카운터 증가 (A+1)
+    field(INPB, "$(P)$(R)Drift.VAL") # Self feedback hack for counter
+    # 실제 구현시엔 별도 Counter 레코드를 쓰는게 정석이나 약식 구현
+}
+
+# 2-2. 측정된 튠 (Measured Tune) - Physics Model
+# Tune = Base + (Sensitivity * Current) + Drift
+record(calc, "$(P)$(R)Meas") {
+    field(DESC, "Measured Tune PV")
+    field(SCAN, ".1 second")
+    
+    field(INPA, "$(P)$(R)Quad:Set CP") # 자석 전류 (변경시 즉시 반응)
+    field(INPB, "$(P)$(R)Drift PP")    # 외란
+    
+    # 물리 모델 가정:
+    # - 전류가 0일 때 자연 튠: 0.15
+    # - 감도(Sensitivity): 0.001 Tune/Amp (1A당 0.001 변화)
+    # - 현재 전류(A)가 100A면 -> 0.15 + 0.1 = 0.25 (Target)
+    
+    field(CALC, "0.15 + (A * 0.001) + B")
+    
+    field(PREC, "4")
+}
+
+# ==================================================================
+# 3. 튠 피드백 제어기 (PI Controller)
+# ==================================================================
+
+# 3-1. 에러 계산 (Error)
+record(calc, "$(P)$(R)FB:Error") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Target NPP") # 목표
+    field(INPB, "$(P)$(R)Meas NPP")   # 측정값
+    
+    # Error = Target - Measured
+    field(CALC, "A - B")
+    
+    field(PREC, "5")
+    # 에러가 계산되면 제어 로직 실행
+    field(FLNK, "$(P)$(R)FB:Calc")
+}
+
+# 3-2. 제어량 계산 (PI Logic)
+# 쿼드루폴 전류를 얼마나 더하거나 뺄지 계산
+record(calcout, "$(P)$(R)FB:Calc") {
+    field(DESC, "PI Controller Calculation")
+    
+    field(INPA, "$(P)$(R)FB:Error NPP") # 에러
+    field(INPB, "$(P)$(R)FB:Run NPP")   # On/Off
+    field(INPC, "$(P)$(R)Quad:Set NPP") # 현재 자석값 (적분기 역할)
+    
+    # 게인 설정
+    # Kp (비례): 500.0 (에러가 0.001이면 0.5A 보정)
+    # Ki (적분): 100.0 (에러 누적 보정)
+    # dt: 0.1초
+    
+    # 로직:
+    # 1. Run(B)이 0이면 -> 현재 자석값(C) 유지 (No Change)
+    # 2. Run(B)이 1이면 -> C + (Error*Kp) + (Error*Ki*dt)
+    #    (여기서는 속도형 알고리즘 대신 위치형 변형 사용: 
+    #     Actuator가 적분기 역할을 하도록 델타를 더함)
+    
+    # Delta_I = (Error * P_Gain) + (Error * I_Gain * dt)
+    # New_Set = Old_Set + Delta_I
+    # P=500, I=100 가정
+    
+    field(CALC, "B ? (C + (A*500.0) + (A*100.0*0.1)) : C")
+    
+    # 계산된 값을 자석에 씀 (Closed Loop 형성)
+    field(OUT,  "$(P)$(R)Quad:Set PP")
+}

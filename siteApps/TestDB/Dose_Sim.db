@@ -1,0 +1,120 @@
+# ------------------------------------------------------------------
+# EPICS Ion Implantation Dose Controller
+# Logic: Real-time Current Integration & End-point Detection
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 공정 설정 (Process Recipe)
+# ==================================================================
+
+# 1-1. 목표 도즈량 (Target Dose)
+# 목표 전하량 (micro-Coulombs)
+record(ao, "$(P)$(R)Target") {
+    field(DESC, "Target Dose")
+    field(EGU,  "uC")
+    field(VAL,  "1000.0")
+    field(PINI, "YES")
+}
+
+# 1-2. 빔 전류 시뮬레이션 (Beam Source)
+# 이온 소스의 빔은 완벽하게 일정하지 않고 흔들립니다. (Ripple)
+# 평균 10uA + 노이즈
+record(calc, "$(P)$(R)Beam:Curr") {
+    field(DESC, "Beam Current Source")
+    field(SCAN, ".1 second")
+    # A: 노이즈 생성을 위한 카운터 (시스템 내부용)
+    # RNDM: 랜덤 노이즈
+    field(INPA, "$(P)$(R)Beam:Curr NPP")
+    field(CALC, "10.0 + (SIN(A/5)*1.0) + (RNDM-0.5)")
+    field(EGU,  "uA")
+    field(PREC, "2")
+}
+
+# 1-3. 공정 시작 명령 (Run)
+record(bo, "$(P)$(R)Run") {
+    field(DESC, "Start Implantation")
+    field(ZNAM, "Idle")
+    field(ONAM, "Run")
+    field(VAL,  "0")
+    # Run이 켜지면 게이트 로직을 트리거
+    field(FLNK, "$(P)$(R)Gate:Ctrl")
+}
+
+# 1-4. 시스템 리셋 (Reset Integrator)
+record(bo, "$(P)$(R)Reset") {
+    field(DESC, "Reset Dose Count")
+    field(ZNAM, "Idle")
+    field(ONAM, "Reset")
+}
+
+# ==================================================================
+# 2. 빔 게이트 및 적분 제어 (Gate & Integrator)
+# ==================================================================
+
+# 2-1. 빔 게이트 제어 (Gate Logic)
+# 도즈가 목표에 도달하면 자동으로 닫힘 (Auto Stop)
+record(calc, "$(P)$(R)Gate:Ctrl") {
+    field(DESC, "Beam Gate Status")
+    field(SCAN, ".1 second")
+    
+    # 입력
+    field(INPA, "$(P)$(R)Run NPP")      # Run 명령
+    field(INPB, "$(P)$(R)Dose:Acc NPP") # 현재 누적 도즈
+    field(INPC, "$(P)$(R)Target NPP")   # 목표 도즈
+    field(INPD, "$(P)$(R)Gate:Ctrl NPP") # 현재 게이트 상태 (Latch용)
+    
+    # 로직:
+    # 1. Run(A)이 0이면 -> 0 (Close)
+    # 2. Run(A)이 1이고:
+    #    - 현재 도즈(B)가 목표(C)보다 작으면 -> 1 (Open)
+    #    - 현재 도즈(B)가 목표(C) 이상이면 -> 0 (Close / End-point)
+    field(CALC, "A ? (B < C ? 1 : 0) : 0")
+    
+    # 게이트 상태가 결정되면 적분기로 넘어감
+    field(FLNK, "$(P)$(R)Dose:Acc")
+}
+
+# 2-2. 도즈 적분기 (Current Integrator)
+# Q = Q_prev + (I * dt)
+# 단, 게이트가 열려있을 때만 적분함 (Wafer에 도달한 양만 계산)
+record(calc, "$(P)$(R)Dose:Acc") {
+    field(DESC, "Accumulated Dose")
+    # Gate:Ctrl에 의해 0.1초마다 호출됨 (Passive)
+    
+    # 입력
+    field(INPA, "$(P)$(R)Beam:Curr NPP") # 현재 빔 전류 (I)
+    field(INPB, "$(P)$(R)Gate:Ctrl NPP") # 게이트 상태 (1=Open)
+    field(INPC, "$(P)$(R)Dose:Acc NPP")  # 이전 누적값 (Self)
+    field(INPD, "$(P)$(R)Reset NPP")     # 리셋 신호
+    
+    # 로직:
+    # 1. 리셋(D=1)이면 -> 0으로 초기화
+    # 2. 게이트(B=1)가 열려있으면 -> 이전값(C) + (전류(A) * 0.1초)
+    # 3. 게이트가 닫혀있으면 -> 이전값(C) 유지 (Hold)
+    field(CALC, "D ? 0 : (B ? (C + (A * 0.1)) : C)")
+    
+    field(EGU,  "uC")
+    field(PREC, "2")
+    
+    # 적분 후 완료 상태 체크
+    field(FLNK, "$(P)$(R)Status")
+}
+
+# ==================================================================
+# 3. 상태 모니터링 (Status)
+# ==================================================================
+
+# 3-1. 공정 완료 상태 표시
+record(calc, "$(P)$(R)Status") {
+    field(DESC, "Process Status")
+    field(INPA, "$(P)$(R)Dose:Acc NPP")
+    field(INPB, "$(P)$(R)Target NPP")
+    field(INPC, "$(P)$(R)Gate:Ctrl NPP")
+    field(INPD, "$(P)$(R)Run NPP")
+    
+    # 0: Idle (Run=0)
+    # 1: Running (Run=1 && Gate=1)
+    # 2: Complete (Run=1 && Gate=0 && Dose>=Target)
+    field(CALC, "!D ? 0 : (C ? 1 : (A>=B ? 2 : 0))")
+}

@@ -1,0 +1,83 @@
+# ------------------------------------------------------------------
+# EPICS PWM Generator with Duty Cycle % Control
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# 1. 기본 설정 (기존과 동일)
+record(ao, "$(P)$(R)HighVal") {
+    field(DESC, "High Level Value")
+    field(VAL,  "5")
+    field(PINI, "YES")
+}
+
+record(ao, "$(P)$(R)LowVal") {
+    field(DESC, "Low Level Value")
+    field(VAL,  "0")
+    field(PINI, "YES")
+}
+
+record(bo, "$(P)$(R)Run") {
+    field(DESC, "PWM Run Control")
+    field(ZNAM, "Stop")
+    field(ONAM, "Run")
+    field(VAL,  "0")
+}
+
+# 2. 주기 및 Duty Cycle 설정 (변경된 부분)
+
+# 전체 주기 (Ticks)
+# 값이 변경되면 실제 폭(Width)을 재계산하도록 FLNK 설정
+record(ao, "$(P)$(R)Period") {
+    field(DESC, "Total Cycle Length (Ticks)")
+    field(VAL,  "100")
+    field(PINI, "YES")
+    field(FLNK, "$(P)$(R)CalcWidth")
+}
+
+# [New] Duty Cycle (%)
+# 사용자는 여기에 0~100 사이의 값을 입력합니다.
+record(ao, "$(P)$(R)DutyCycle") {
+    field(DESC, "Duty Cycle in %")
+    field(VAL,  "50")
+    field(DRVL, "0")    # 0% 미만 입력 방지
+    field(DRVH, "100")  # 100% 초과 입력 방지
+    field(EGU,  "%")
+    field(PINI, "YES")
+    field(FLNK, "$(P)$(R)CalcWidth") # 값 변경 시 틱 계산 트리거
+}
+
+# [New] 퍼센트 -> 틱 변환 계산기
+# 공식: Width_Ticks = (Period * DutyCycle) / 100
+record(calc, "$(P)$(R)CalcWidth") {
+    field(DESC, "Convert % to Ticks")
+    field(INPA, "$(P)$(R)Period NPP")
+    field(INPB, "$(P)$(R)DutyCycle NPP")
+    field(CALC, "(A * B) / 100")
+}
+
+# 3. 핵심 로직 (Core Logic)
+
+# 카운터 (기존과 동일)
+record(calc, "$(P)$(R)Counter") {
+    field(DESC, "Internal Counter")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Counter NPP")
+    field(INPB, "$(P)$(R)Period NPP")
+    field(INPC, "$(P)$(R)Run NPP")
+    field(CALC, "C ? (A+1)%B : 0")
+    field(FLNK, "$(P)$(R)Output")
+}
+
+# 출력 결정 (Input B가 변경됨)
+# 기존에는 직접 입력받은 Width를 썼지만, 
+# 이제는 CalcWidth에서 계산된 값을 가져옵니다.
+record(calc, "$(P)$(R)Output") {
+    field(DESC, "PWM Square Output")
+    field(INPA, "$(P)$(R)Counter NPP")
+    field(INPB, "$(P)$(R)CalcWidth NPP") # 계산된 틱 수 참조
+    field(INPC, "$(P)$(R)HighVal NPP")
+    field(INPD, "$(P)$(R)LowVal NPP")
+    
+    # 카운터(A)가 계산된 폭(B)보다 작으면 High, 아니면 Low
+    field(CALC, "A < B ? C : D")
+}

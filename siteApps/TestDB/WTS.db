@@ -1,0 +1,328 @@
+# ============================================================
+# 1. Sensors (Inputs) - COMPLETE LIST
+# ============================================================
+record(ai, "WTS:RAW_TANK:LVL") {
+    field(DESC, "Raw Water Tank Level")
+    field(EGU, "%")
+    field(PREC, "1")
+    field(VAL, "50")  # Initial Value
+    field(PINI, "YES")
+}
+
+record(ai, "WTS:RAW_TANK:TEMP") {
+    field(DESC, "Raw Water Temp")
+    field(EGU, "C")
+    field(VAL, "15")
+}
+
+record(ai, "WTS:RAW_TANK:PH") {
+    field(DESC, "Raw Water pH")
+    field(EGU, "pH")
+    field(PREC, "2")
+    field(VAL, "7.0")
+}
+
+record(ai, "WTS:RAW_TANK:TURB") {
+    field(DESC, "Raw Water Turbidity")
+    field(EGU, "NTU")
+    field(VAL, "100")
+}
+
+record(ai, "WTS:CLEAN_TANK:LVL") {
+    field(DESC, "Clean Water Tank Level")
+    field(EGU, "%")
+    field(PREC, "1")
+    field(VAL, "50")
+    field(PINI, "YES")
+}
+
+record(ai, "WTS:FILTER:DP") {
+    field(DESC, "Filter Diff Pressure")
+    field(EGU, "kPa")
+    field(PREC, "2")
+    field(VAL, "10")
+    field(PINI, "YES")
+}
+
+# [FIX] 누락되었던 Feedback 센서들 추가
+record(bi, "WTS:P1:RUN_FB") { 
+    field(DESC, "Pump1 Run FB") 
+    field(ZNAM, "Stop") 
+    field(ONAM, "Run") 
+    field(PINI, "YES")
+    field(VAL, "0") 
+}
+
+record(bi, "WTS:P2:RUN_FB") { 
+    field(DESC, "Pump2 Run FB") 
+    field(ZNAM, "Stop") 
+    field(ONAM, "Run") 
+    field(PINI, "YES")
+    field(VAL, "0") 
+}
+
+record(bi, "WTS:MIX:RUN_FB") { 
+    field(DESC, "Mixer Run FB") 
+    field(ZNAM, "Stop") 
+    field(ONAM, "Run") 
+    field(PINI, "YES")
+    field(VAL, "0") 
+}
+
+record(bi, "WTS:P1:FAULT") { 
+    field(DESC, "Pump 1 Fault") 
+    field(ZNAM, "Normal") 
+    field(ONAM, "Fault") 
+    field(PINI, "YES")
+    field(VAL, "0") 
+}
+
+record(bi, "WTS:P2:FAULT") { 
+    field(DESC, "Pump 2 Fault") 
+    field(ZNAM, "Normal") 
+    field(ONAM, "Fault") 
+    field(PINI, "YES")
+    field(VAL, "0") 
+}
+
+
+# ============================================================
+# 2. Actuators (Outputs)
+# ============================================================
+record(bo, "WTS:SYS:STATUS") {
+    field(DESC, "System Start/Stop")
+    field(ZNAM, "STOP")
+    field(ONAM, "RUN")
+    field(VAL,  "0")
+    field(FLNK, "WTS:CTRL:MAIN_LOOP") 
+}
+
+record(bo, "WTS:V1:CMD") { 
+    field(DESC, "Inlet Valve") 
+    field(ZNAM, "Closed") 
+    field(ONAM, "Open") 
+    field(PINI, "YES") 
+    field(VAL, "0") 
+}
+record(bo, "WTS:V2:CMD") { 
+    field(DESC, "Outlet Valve") 
+    field(ZNAM, "Closed") 
+    field(ONAM, "Open") 
+    field(PINI, "YES") 
+    field(VAL, "0") 
+}
+
+record(bo, "WTS:FILTER:BACKWASH") { 
+    field(DESC, "Backwash Valve") 
+    field(ZNAM, "Closed") 
+    field(ONAM, "Open") 
+    field(PINI, "YES") 
+    field(VAL, "0") 
+}
+
+record(bo, "WTS:P1:CMD") { 
+    field(DESC, "Pump 1 CMD") 
+    field(ZNAM, "Off") 
+    field(ONAM, "On") 
+    field(PINI, "YES") 
+    field(VAL, "0") 
+}
+
+record(bo, "WTS:P2:CMD") { 
+    field(DESC, "Pump 2 CMD") 
+    field(ZNAM, "Off") 
+    field(ONAM, "On") 
+    field(PINI, "YES") 
+    field(VAL, "0") 
+}
+
+record(bo, "WTS:MIX:CMD") { 
+    field(DESC, "Mixer CMD") 
+    field(ZNAM, "Off") 
+    field(ONAM, "On") 
+    field(PINI, "YES") 
+    field(VAL, "0") 
+}
+
+record(ao, "WTS:P1:SPEED_SP") { 
+    field(EGU, "%") 
+    field(VAL, "0") 
+    field(PINI, "YES") 
+}
+
+record(ao, "WTS:P2:SPEED_SP") { 
+    field(EGU, "%") 
+    field(VAL, "0") 
+    field(PINI, "YES") 
+}
+
+record(ao, "WTS:CHEM:DOSE_SP") { 
+    field(EGU, "mL/min") 
+    field(VAL, "0") 
+    field(PINI, "YES") 
+}
+
+# ============================================================
+# 3. Control Logic (Improved)
+# ============================================================
+
+# Main loop triggers simulation and control every 1 second
+record(fanout, "WTS:CTRL:MAIN_LOOP") {
+    field(SCAN, "1 second")
+    field(LNK1, "WTS:CTRL:INTERLOCK")
+    field(LNK2, "WTS:CTRL:P1_SPEED")
+    field(LNK3, "WTS:CTRL:CHEM_DOSE")
+    field(LNK4, "WTS:CTRL:BACKWASH_CHK")
+    field(LNK5, "WTS:SIM:LOOP")
+}
+
+# [Interlock]
+record(calcout, "WTS:CTRL:INTERLOCK") {
+    field(INPA, "WTS:P1:FAULT")
+    field(INPB, "WTS:P2:FAULT")
+    field(INPC, "WTS:CLEAN_TANK:LVL")
+    field(INPD, "WTS:RAW_TANK:LVL")
+    field(INPE, "WTS:SYS:STATUS")
+    # Fault(A,B) or CleanHigh(C>95) or RawLow(D<10)
+    field(CALC, "(A||B||C>95||D<10) && E") 
+    field(OOPT, "When Non-zero")
+    field(OUT,  "WTS:SYS:STATUS PP")
+    field(VAL,  "0")
+}
+
+# [Pump 1 Speed] - Simplified Logic for safety
+record(calcout, "WTS:CTRL:P1_SPEED") {
+    field(INPA, "WTS:CLEAN_TANK:LVL")
+    field(INPB, "WTS:SYS:STATUS")
+    # IF NOT RUNNING -> 0
+    # IF LVL < 30 -> 100
+    # IF LVL < 50 -> 80
+    # ELSE -> 20 (Simplified for string length safety)
+    field(CALC, "B=0?0:(A<30?100:(A<50?80:20))")
+    field(OUT,  "WTS:P1:SPEED_SP PP")
+    field(OOPT, "Every Time")
+}
+
+# [Chem Dose]
+record(calcout, "WTS:CTRL:CHEM_DOSE") {
+    field(INPA, "WTS:RAW_TANK:PH")
+    field(INPB, "WTS:RAW_TANK:TURB")
+    field(INPC, "WTS:SYS:STATUS")
+    field(CALC, "C?MAX(0,MIN(100,20+(7-A)*10+(B>200?(B-200)*0.1:0))):0")
+    field(OUT,  "WTS:CHEM:DOSE_SP PP")
+    field(OOPT, "Every Time")
+}
+
+# [Backwash Check]
+record(calcout, "WTS:CTRL:BACKWASH_CHK") {
+    field(INPA, "WTS:FILTER:DP")
+    field(INPB, "WTS:SYS:STATUS")
+    field(INPC, "WTS:SEQ:BACKWASH.PACT")
+    field(CALC, "(A>40)&&B&&!C")
+    field(OOPT, "When Non-zero")
+    field(OUT,  "WTS:SEQ:BACKWASH.PROC")
+}
+
+# [Sequence]
+record(seq, "WTS:SEQ:BACKWASH") {
+    # 1. Pump Stop
+    field(DLY1, "0")
+    field(DOL1, "0")
+    field(LNK1, "WTS:P1:CMD PP")
+    # 2. Open Valve (Wait 2s)
+    field(DLY2, "2.0")
+    field(DOL2, "1")
+    field(LNK2, "WTS:FILTER:BACKWASH PP")
+    # 3. Close Valve (Wait 5s - Shortened for Test)
+    field(DLY3, "5.0")
+    field(DOL3, "0")
+    field(LNK3, "WTS:FILTER:BACKWASH PP")
+    # 4. Reset DP
+    field(DLY4, "1.0")
+    field(DOL4, "5.0")
+    field(LNK4, "WTS:FILTER:DP PP")
+    # 5. Restart Pump (Wait 2s)
+    field(DLY5, "2.0")
+    field(DOL5, "1")
+    field(LNK5, "WTS:P1:CMD PP")
+}
+
+
+# ============================================================
+# 4. Simulation Logic (Plant Model)
+# ============================================================
+
+record(fanout, "WTS:SIM:LOOP") {
+    field(LNK1, "WTS:SIM:RAW_LVL")
+    field(LNK2, "WTS:SIM:CLEAN_LVL")
+    field(LNK3, "WTS:SIM:DP")
+    field(LNK4, "WTS:SIM:FB_ALL")
+}
+
+# [Sim] Raw Water Level: V1 fills it, P1 drains it
+record(calcout, "WTS:SIM:RAW_LVL") {
+    field(INPA, "WTS:RAW_TANK:LVL")
+    field(INPB, "WTS:V1:CMD")
+    field(INPC, "WTS:P1:SPEED_SP")
+    # Fill speed: 2.0 / Drain speed: P1_SPEED * 0.05
+    field(CALC, "MAX(0,MIN(100, A + (B*2.0 - C*0.05)))")
+    field(OUT,  "WTS:RAW_TANK:LVL PP")
+    field(OOPT, "Every Time")
+}
+
+# [Sim] Clean Water Level: P1 fills it, P2 drains it
+record(calcout, "WTS:SIM:CLEAN_LVL") {
+    field(INPA, "WTS:CLEAN_TANK:LVL")
+    field(INPB, "WTS:P1:SPEED_SP")
+    field(INPC, "WTS:P2:SPEED_SP")
+    field(CALC, "MAX(0,MIN(100, A + (B*0.05 - C*0.08)))")
+    field(OUT,  "WTS:CLEAN_TANK:LVL PP")
+    field(OOPT, "Every Time")
+}
+
+# [Sim] Filter DP: Rises when P1 runs
+record(calcout, "WTS:SIM:DP") {
+    field(INPA, "WTS:FILTER:DP")
+    field(INPB, "WTS:P1:CMD")
+    field(CALC, "B?(A+0.5):A") # Increases by 0.5 kPa per sec if Pump ON
+    field(OUT,  "WTS:FILTER:DP PP")
+    field(OOPT, "Every Time")
+}
+
+# [Sim] Feedbacks (P1, P2, MIX) - Delay simulation skipped for simplicity
+record(calcout, "WTS:SIM:FB_ALL") {
+    field(INPA, "WTS:P1:CMD")
+    field(INPB, "WTS:P2:CMD")
+    field(INPC, "WTS:MIX:CMD")
+    
+    # Write directly to feedback PVs
+    field(CALC, "1") # Always true to trigger outputs
+    field(OUT,  "WTS:P1:RUN_FB PP")
+    field(ODLY, "0")
+    field(VAL,  "0") # Dummy
+    
+    # We use Forward Links (FLNK) for multiple writes or just multiple calcouts.
+    # Here, for simplicity in one record, we can't write 3 outputs.
+    # Let's split or use FLNK. Since this is getting long, I'll use a simple trick:
+    # Just link CMD to FB in real-time.
+}
+
+# [FIX] Feedback handling - Direct link simulation
+record(calcout, "WTS:SIM:P1_FB_LOGIC") {
+    field(INPA, "WTS:P1:CMD")
+    field(CALC, "A")
+    field(OUT,  "WTS:P1:RUN_FB PP")
+    field(SCAN, "1 second")
+}
+record(calcout, "WTS:SIM:P2_FB_LOGIC") {
+    field(INPA, "WTS:P2:CMD")
+    field(CALC, "A")
+    field(OUT,  "WTS:P2:RUN_FB PP")
+    field(SCAN, "1 second")
+}
+record(calcout, "WTS:SIM:MIX_FB_LOGIC") {
+    field(INPA, "WTS:MIX:CMD")
+    field(CALC, "A")
+    field(OUT,  "WTS:MIX:RUN_FB PP")
+    field(SCAN, "1 second")
+}

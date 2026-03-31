@@ -1,0 +1,73 @@
+# Macro: P (Prefix)
+
+# ---------------------------------------------------------
+# 1. Step 1: Angle Control (using calcout)
+# ---------------------------------------------------------
+
+# [PID Gains]
+# Kp: 각도 비례 이득 (기본값 -40.0)
+record(ao, "$(P)PID:AngleKp") {
+    field(DESC, "Angle Proportional Gain")
+    field(VAL,  "-40.0")
+    field(PREC, "1")
+}
+
+# Kd: 각속도 미분 이득 (기본값 -10.0) -> Damping 역할
+record(ao, "$(P)PID:AngleKd") {
+    field(DESC, "Angle Derivative Gain")
+    field(VAL,  "-10.0")
+    field(PREC, "1")
+}
+
+# [Setpoint]
+record(ao, "$(P)PID:AngleSP") {
+    field(DESC, "Target Angle (rad)")
+    field(VAL,  "0.0")
+    field(PREC, "3")
+}
+
+# [Enable Switch]
+record(bo, "$(P)PID:Enable") {
+    field(DESC, "PID On/Off")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto Balance")
+    field(VAL,  "0")
+}
+
+# [PID Calculation Engine]
+record(calcout, "$(P)PID:AngleCalc") {
+    field(DESC, "Angle PID Calculation")
+    
+    # --- Inputs ---
+    # A: Target Angle (SP)
+    field(INPA, "$(P)PID:AngleSP CP")
+    # B: Current Angle (Theta) - 값이 변하면 즉시 실행 (CP)
+    field(INPB, "$(P)State:Theta CP")
+    # C: Current Angular Velocity (dTheta) - For D-term
+    field(INPC, "$(P)State:dTheta CP")
+    # D: Kp
+    field(INPD, "$(P)PID:AngleKp")
+    # E: Kd
+    field(INPE, "$(P)PID:AngleKd")
+    # F: Enable Switch
+    field(INPF, "$(P)PID:Enable")
+    
+    # --- Calculation Formula ---
+    # Error_P = (SP - Theta) = (A - B)
+    # Error_D = (0 - dTheta) = (0 - C)  <-- SP의 변화율은 0이라 가정
+    # Output = Kp*Error_P + Kd*Error_D
+    # Logic: If Enable(F)==0, Output=0. Else Calculate.
+    
+    field(CALC, "F=0?0 : (D*(A-B) + E*(0-C))")
+    
+    # --- Output ---
+    # Limit: -25V ~ +25V
+    field(OUT,  "$(P)In:Force PP")
+    field(OOPT, "Every Time")
+    
+    # Output Limit (Clipping in calc)
+    # Can also use DRVH/DRVL in calcout, or handle in CALC
+    # Here we let In:Force handle the limit (it has DRVH/DRVL)
+    
+    field(PREC, "3")
+}

@@ -1,0 +1,70 @@
+# ------------------------------------------------------------------
+# EPICS White Noise Generator
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# 1. 제어 파라미터 (Controls)
+
+# 노이즈의 크기 (Peak-to-Peak Amplitude)
+# 예: 10으로 설정하면 결과는 기준값에서 ±5 범위로 튑니다.
+record(ao, "$(P)$(R)Amp") {
+    field(DESC, "Noise Amplitude (P-P)")
+    field(VAL,  "2.0")
+    field(PINI, "YES")
+    field(PREC, "3")
+}
+
+# 기준값 (Offset / Center Value)
+# 노이즈가 없는 경우의 기본값입니다.
+record(ao, "$(P)$(R)Offset") {
+    field(DESC, "Base Offset Value")
+    field(VAL,  "0.0")
+    field(PINI, "YES")
+    field(PREC, "3")
+}
+
+# 실행 제어 (On/Off)
+record(bo, "$(P)$(R)Run") {
+    field(DESC, "Noise Gen Control")
+    field(ZNAM, "Stop")
+    field(ONAM, "Run")
+    field(VAL,  "0")
+}
+
+# ------------------------------------------------------------------
+# 핵심 로직 (Core Logic)
+# ------------------------------------------------------------------
+
+# 2. 노이즈 계산 레코드
+# A: Amplitude (진폭)
+# B: Offset (기준값)
+# C: Run (실행 여부)
+# RNDM: 0~1 사이의 난수 (EPICS 내장 키워드)
+record(calc, "$(P)$(R)Val") {
+    field(DESC, "Noise Output")
+    field(SCAN, ".1 second")      # 노이즈 갱신 주기
+    field(INPA, "$(P)$(R)Amp NPP")
+    field(INPB, "$(P)$(R)Offset NPP")
+    field(INPC, "$(P)$(R)Run NPP")
+    
+    # 로직 설명:
+    # 1. (RNDM - 0.5): 0~1 범위를 -0.5 ~ +0.5로 중심 이동
+    # 2. * A : 진폭을 곱함 (A가 10이면 -5 ~ +5)
+    # 3. + B : 오프셋을 더함
+    # 4. Run(C)이 0이면 노이즈 없이 Offset(B)만 출력
+    field(CALC, "C ? ((RNDM-0.5)*A + B) : B")
+    
+    field(PREC, "3")
+}
+
+# 부드러운 노이즈 (Low Pass Filter 효과)
+# 이전 값(VAL)과 새로운 랜덤값의 비율을 섞습니다.
+record(calc, "$(P)$(R)SmoothNoise") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Amp NPP")
+    # ... (기타 입력 동일) ...
+    
+    # 0.8 * 이전값 + 0.2 * 새로운_랜덤값
+    # 계수(0.8)가 클수록 더 부드럽고 느리게 변하는 노이즈가 됩니다.
+    field(CALC, "0.8*VAL + 0.2*((RNDM-0.5)*A)")
+}

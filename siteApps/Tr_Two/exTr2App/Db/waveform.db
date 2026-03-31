@@ -1,0 +1,13 @@
+record(waveform, "IN:WAVEFORM:PV") {
+    field(DESC, "200 Elements Float Array")
+    field(DTYP, "Soft Channel")
+    field(NELM, "2000") 
+    field(FTVL, "FLOAT")
+}
+
+record(waveform, "OUT:WAVEFORM:PV") {
+    field(DESC, "200 Elements Float Array")
+    field(DTYP, "Soft Channel")
+    field(NELM, "2000") 
+    field(FTVL, "FLOAT")
+}

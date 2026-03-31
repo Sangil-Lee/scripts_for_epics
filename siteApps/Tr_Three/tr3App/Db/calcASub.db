@@ -1,0 +1,45 @@
+# ----- 입력 파형 (테스트 소스) -----
+record(waveform, "$(P):InputWf") {
+    field(NELM, "1024")
+    field(FTVL, "DOUBLE")
+}
+
+# ----- 연산 제어 PV -----
+record(stringout, "$(P):OpName")    { field(VAL,  "INIT")  }
+record(longout,   "$(P):RangeStart"){ field(VAL,  "0")     }
+record(longout,   "$(P):RangeEnd")  { field(VAL,  "0")     }
+record(ao,        "$(P):Operand")   { field(VAL,  "0.0")   }
+record(ao,        "$(P):Param1")    { field(VAL,  "0.0")   }
+record(ao,        "$(P):Param2")    { field(VAL,  "0.0")   }
+
+# ----- aSub 레코드 -----
+record(aSub, "$(P):CalcWf") {
+    field(INAM, "calcWaveformInit")
+    field(SNAM, "calcWaveformProcess")
+    field(FTA,  "DOUBLE")
+    field(FTB,  "STRING")
+    field(FTC,  "LONG")
+    field(FTD,  "LONG")
+    field(FTE,  "DOUBLE")
+    field(FTF,  "DOUBLE")
+    field(FTG,  "DOUBLE")
+    field(FTVA, "DOUBLE")
+    field(NOA,  "1024")
+    field(NOVA, "1024")
+    field(INPA, "$(P):InputWf NPP")
+    field(INPB, "$(P):OpName NPP")
+    field(INPC, "$(P):RangeStart NPP")
+    field(INPD, "$(P):RangeEnd NPP")
+    field(INPE, "$(P):Operand NPP")
+    field(INPF, "$(P):Param1 NPP")
+    field(INPG, "$(P):Param2 NPP")
+    field(OUTA, "$(P):OutputWf PP")
+}
+
+# ----- 출력 파형 (결과 확인용) -----
+record(waveform, "$(P):OutputWf") {
+    field(NELM, "1024")
+    field(FTVL, "DOUBLE")
+}
+
+

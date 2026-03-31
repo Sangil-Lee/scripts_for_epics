@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Water Tank PID Control</name>
+  <macros>
+    <P>Sim:</P>
+    <R>Test:</R>
+  </macros>
+  <width>1200</width>
+  <height>900</height>
+  <background_color>
+    <color red="240" green="240" blue="240">
+    </color>
+  </background_color>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <text>Water Tank PID Simulator</text>
+    <x>190</x>
+    <width>760</width>
+    <height>40</height>
+    <font>
+      <font family="Liberation Sans" style="BOLD" size="24.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color red="0" green="55" blue="110">
+      </color>
+    </foreground_color>
+    <horizontal_alignment>1</horizontal_alignment>
+    <vertical_alignment>1</vertical_alignment>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>Operator Control</name>
+    <x>360</x>
+    <y>70</y>
+    <width>500</width>
+    <style>1</style>
+    <font>
+      <font family="Liberation Sans" style="BOLD" size="14.0">
+      </font>
+    </font>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_Mode</name>
+      <text>Operation Mode:</text>
+      <x>20</x>
+      <y>10</y>
+      <width>120</width>
+      <height>30</height>
+    </widget>
+    <widget type="choice" version="2.0.0">
+      <name>Choice_Mode</name>
+      <pv_name>$(P)$(R)Mode</pv_name>
+      <x>150</x>
+      <y>10</y>
+      <width>200</width>
+      <height>30</height>
+      <items>
+        <item>Manual</item>
+        <item>Auto</item>
+      </items>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_SP</name>
+      <text>Target Level (SP):</text>
+      <x>20</x>
+      <y>50</y>
+      <width>120</width>
+      <height>30</height>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <name>Entry_SP</name>
+      <pv_name>$(P)$(R)SetPoint</pv_name>
+      <x>150</x>
+      <y>50</y>
+      <width>120</width>
+      <height>30</height>
+      <precision>1</precision>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Unit_SP</name>
+      <text>cm</text>
+      <x>280</x>
+      <y>50</y>
+      <width>30</width>
+      <height>30</height>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_ManValve</name>
+      <text>Manual Valve:</text>
+      <x>20</x>
+      <y>90</y>
+      <width>120</width>
+      <height>30</height>
+    </widget>
+    <widget type="scrollbar" version="2.0.0">
+      <name>Scroll_Man</name>
+      <pv_name>$(P)$(R)Valve:Man</pv_name>
+      <x>150</x>
+      <y>90</y>
+      <width>200</width>
+      <height>30</height>
+      <rules>
+        <rule name="EnableIfManual" prop_id="enabled" out_exp="false">
+          <exp bool_exp="pv0==1">
+            <value>false</value>
+          </exp>
+          <exp bool_exp="pv0==0">
+            <value>true</value>
+          </exp>
+          <pv_name>$(P)$(R)Mode</pv_name>
+        </rule>
+      </rules>
+      <limits_from_pv>false</limits_from_pv>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <name>Txt_ManVal</name>
+      <pv_name>$(P)$(R)Valve:Man</pv_name>
+      <x>360</x>
+      <y>90</y>
+      <width>40</width>
+      <height>30</height>
+      <font>
+        <font family="Liberation Sans" style="BOLD" size="16.0">
+        </font>
+      </font>
+      <precision>0</precision>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_Outflow</name>
+      <text>OutFlow (Leak):</text>
+      <x>20</x>
+      <y>130</y>
+      <width>120</width>
+      <height>30</height>
+    </widget>
+    <widget type="scrollbar" version="2.0.0">
+      <name>Scroll_Out</name>
+      <pv_name>$(P)$(R)Outflow</pv_name>
+      <x>150</x>
+      <y>130</y>
+      <width>200</width>
+      <height>30</height>
+      <maximum>50.0</maximum>
+      <limits_from_pv>false</limits_from_pv>
+    </widget>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>PID Tuning</name>
+    <x>360</x>
+    <y>280</y>
+    <width>340</width>
+    <height>160</height>
+    <style>1</style>
+    <font>
+      <font family="Liberation Sans" style="BOLD" size="14.0">
+      </font>
+    </font>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_KP</name>
+      <text>P-Gain (Kp):</text>
+      <x>10</x>
+      <y>10</y>
+      <width>90</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <name>Entry_KP</name>
+      <pv_name>$(P)$(R)PID:KP</pv_name>
+      <x>110</x>
+      <y>10</y>
+      <width>129</width>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_KI</name>
+      <text>I-Gain (Ki):</text>
+      <x>10</x>
+      <y>45</y>
+      <width>90</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <name>Entry_KI</name>
+      <pv_name>$(P)$(R)PID:KI</pv_name>
+      <x>110</x>
+      <y>45</y>
+      <width>119</width>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_Calc</name>
+      <text>Internal Values</text>
+      <x>10</x>
+      <y>80</y>
+      <width>160</width>
+      <font>
+        <font family="Liberation Sans" style="ITALIC" size="12.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_Err</name>
+      <text>Error:</text>
+      <x>10</x>
+      <y>100</y>
+      <width>40</width>
+      <font>
+        <font name="Fine Print" family="Liberation Sans" style="REGULAR" size="12.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <name>Txt_Err</name>
+      <pv_name>$(P)$(R)PID:Error</pv_name>
+      <x>50</x>
+      <y>100</y>
+      <width>50</width>
+      <precision>2</precision>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Lbl_ITerm</name>
+      <text>I-Sum:</text>
+      <x>100</x>
+      <y>100</y>
+      <width>40</width>
+      <font>
+        <font name="Fine Print" family="Liberation Sans" style="REGULAR" size="12.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <name>Txt_ITerm</name>
+      <pv_name>$(P)$(R)PID:I_Term</pv_name>
+      <x>140</x>
+      <y>100</y>
+      <width>50</width>
+      <precision>2</precision>
+    </widget>
+  </widget>
+  <widget type="stripchart" version="2.1.0">
+    <name>Trend</name>
+    <x>360</x>
+    <y>450</y>
+    <width>810</width>
+    <height>420</height>
+    <title>Process Trend</title>
+    <show_legend>true</show_legend>
+    <y_axes>
+      <y_axis>
+        <title>Level (cm)</title>
+        <autoscale>false</autoscale>
+        <log_scale>false</log_scale>
+        <minimum>0.0</minimum>
+        <maximum>100.0</maximum>
+        <show_grid>true</show_grid>
+        <visible>true</visible>
+        <color>
+          <color name="Text" red="0" green="0" blue="0">
+          </color>
+        </color>
+      </y_axis>
+      <y_axis>
+        <title>Valve (%)</title>
+        <autoscale>false</autoscale>
+        <log_scale>false</log_scale>
+        <minimum>0.0</minimum>
+        <maximum>100.0</maximum>
+        <show_grid>false</show_grid>
+        <visible>true</visible>
+        <color>
+          <color name="Text" red="0" green="0" blue="0">
+          </color>
+        </color>
+      </y_axis>
+    </y_axes>
+    <traces>
+      <trace>
+        <name>SetPoint</name>
+        <y_pv>$(P)$(R)SetPoint</y_pv>
+        <axis>0</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="0" green="0" blue="255">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+      <trace>
+        <name>Level (PV)</name>
+        <y_pv>$(P)$(R)Level</y_pv>
+        <axis>0</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="0" green="255" blue="0">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+      <trace>
+        <name>Valve Out</name>
+        <y_pv>$(P)$(R)Valve:Act</y_pv>
+        <axis>1</axis>
+        <trace_type>1</trace_type>
+        <color>
+          <color red="255" green="128" blue="0">
+          </color>
+        </color>
+        <line_width>1</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+    </traces>
+  </widget>
+  <widget type="tank" version="2.0.0">
+    <name>Tank</name>
+    <pv_name>$(P)$(R)Level</pv_name>
+    <x>120</x>
+    <y>159</y>
+    <width>117</width>
+    <height>400</height>
+    <limits_from_pv>false</limits_from_pv>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Lbl_Level</name>
+    <text>Water Level (PV)</text>
+    <x>100</x>
+    <y>560</y>
+    <width>160</width>
+    <font>
+      <font family="Liberation Sans" style="REGULAR" size="18.0">
+      </font>
+    </font>
+    <horizontal_alignment>1</horizontal_alignment>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Txt_Level</name>
+    <pv_name>$(P)$(R)Level</pv_name>
+    <x>107</x>
+    <y>139</y>
+    <width>150</width>
+    <font>
+      <font family="Liberation Sans" style="BOLD" size="18.0">
+      </font>
+    </font>
+    <precision>2</precision>
+    <horizontal_alignment>1</horizontal_alignment>
+  </widget>
+  <widget type="progressbar" version="2.0.0">
+    <name>Bar_Outflow</name>
+    <pv_name>$(P)$(R)Outflow</pv_name>
+    <x>270</x>
+    <y>269</y>
+    <width>40</width>
+    <height>232</height>
+    <fill_color>
+      <color red="255" green="100" blue="100">
+      </color>
+    </fill_color>
+    <limits_from_pv>false</limits_from_pv>
+    <maximum>50.0</maximum>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Lbl_Out</name>
+    <text>Leak</text>
+    <x>267</x>
+    <y>249</y>
+    <width>50</width>
+    <font>
+      <font family="Liberation Sans" style="REGULAR" size="18.0">
+      </font>
+    </font>
+    <horizontal_alignment>1</horizontal_alignment>
+  </widget>
+</display>

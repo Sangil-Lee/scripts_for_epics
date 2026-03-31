@@ -1,0 +1,135 @@
+# ------------------------------------------------------------------
+# EPICS Beam Lifetime Calculator
+# Logic: Derivative (dI/dt) -> Lifetime Calculation -> Low Pass Filter
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 가상 빔 소스 (Beam Current Simulation)
+# ==================================================================
+
+# 1-1. 이론적 수명 설정 (Target Lifetime)
+# 시뮬레이션의 정답 값 (예: 10시간)
+record(ao, "$(P)$(R)Sim:Tau") {
+    field(DESC, "Theoretical Lifetime")
+    field(EGU,  "Hours")
+    field(VAL,  "10.0")
+    field(PINI, "YES")
+}
+
+# 1-2. 노이즈 레벨 설정
+# DCCT 측정 노이즈 (예: 0.005 mA)
+record(ao, "$(P)$(R)Sim:Noise") {
+    field(DESC, "Noise Level")
+    field(VAL,  "0.005")
+}
+
+# 1-3. 빔 전류 시뮬레이션 (Decay Model)
+# 매초 전류가 줄어드는 것을 모사
+record(calc, "$(P)$(R)Beam:Curr") {
+    field(DESC, "Simulated Beam Current")
+    field(SCAN, "1 second") # 1Hz 샘플링
+    
+    # 입력
+    field(INPA, "$(P)$(R)Beam:Curr NPP")  # 이전 전류
+    field(INPB, "$(P)$(R)Sim:Tau NPP")    # 목표 수명 (시간)
+    field(INPC, "$(P)$(R)Sim:Noise NPP")  # 노이즈 크기
+    
+    # 물리 로직:
+    # 1. Decay Factor = exp(-dt / (Tau * 3600))
+    #    여기서 dt=1초. 근사식: (1 - 1/(Tau*3600))
+    # 2. I_new = I_old * Decay_Factor + Noise
+    #    Noise = (RNDM - 0.5) * Scale
+    
+    field(CALC, "(A * (1 - (1.0 / MAX(0.1, B*3600)))) + ((RNDM-0.5)*C)")
+    
+    field(EGU,  "mA")
+    field(VAL,  "200.0") # 초기 전류 200mA
+    
+    # 전류가 변하면 미분기로 전달
+    field(FLNK, "$(P)$(R)Calc:Slope")
+}
+
+# ==================================================================
+# 2. 미분기 및 수명 계산 (Computation Engine)
+# ==================================================================
+
+# 2-1. 이전 전류 저장소 (Previous Value)
+# 미분을 위해 1초 전 데이터를 저장
+record(ai, "$(P)$(R)Store:Curr") {
+    field(DESC, "Current at t-1")
+    field(VAL,  "200.0")
+}
+
+# 2-2. 기울기 계산 (Derivative dI/dt)
+# Slope = Current(t) - Current(t-1)
+record(calc, "$(P)$(R)Calc:Slope") {
+    field(DESC, "dI/dt Calculation")
+    
+    field(INPA, "$(P)$(R)Beam:Curr NPP")  # 현재 전류 (t)
+    field(INPB, "$(P)$(R)Store:Curr NPP") # 과거 전류 (t-1)
+    
+    # 기울기 계산 (mA/sec)
+    field(CALC, "A - B")
+    
+    # 계산 후 -> 수명 계산기로
+    field(FLNK, "$(P)$(R)Calc:Tau")
+}
+
+# 2-3. 수명 계산 (Raw Lifetime)
+# Tau = -I / (dI/dt)
+record(calc, "$(P)$(R)Calc:Tau") {
+    field(DESC, "Raw Lifetime Calculation")
+    
+    field(INPA, "$(P)$(R)Beam:Curr NPP")   # 현재 전류 I
+    field(INPB, "$(P)$(R)Calc:Slope NPP")  # 기울기 dI/dt
+    
+    # 로직:
+    # 1. 기울기(B)가 0이거나 양수(Injection)면 -> 계산 불가 (예: 999 표시)
+    # 2. Tau(sec) = -A / B
+    # 3. Tau(hour) = (-A / B) / 3600
+    
+    field(CALC, "B >= -1e-9 ? 0 : (-A / B / 3600.0)")
+    
+    field(EGU,  "Hours")
+    field(PREC, "2")
+    
+    # 계산 후 -> 필터로
+    field(FLNK, "$(P)$(R)Filter:Tau")
+}
+
+# 2-4. 과거값 업데이트 (Update Store)
+# 다음 주기를 위해 현재 값을 과거 값 저장소에 덮어씀
+# 수명 계산이 다 끝난 뒤에 실행되어야 함 (순서 중요)
+record(calcout, "$(P)$(R)Update:Store") {
+    field(INPA, "$(P)$(R)Beam:Curr NPP")
+    field(CALC, "A")
+    field(OUT,  "$(P)$(R)Store:Curr PP")
+    
+    # Filter:Tau 처리 후 실행되도록 체인 연결 고려 필요
+    # 여기서는 Filter:Tau의 FLNK로 연결
+}
+
+# ==================================================================
+# 3. 데이터 필터링 (Smoothing)
+# ==================================================================
+
+# 3-1. 1차 저주파 통과 필터 (Low Pass Filter)
+# Raw 데이터는 노이즈 때문에 춤을 춤. 이를 부드럽게 만듦.
+# New = Old * (1-a) + Raw * a
+record(calc, "$(P)$(R)Filter:Tau") {
+    field(DESC, "Smoothed Lifetime")
+    
+    field(INPA, "$(P)$(R)Filter:Tau NPP") # 이전 필터값 (Self)
+    field(INPB, "$(P)$(R)Calc:Tau NPP")   # 현재 Raw값
+    
+    # 필터 계수 alpha = 0.05 (과거값 95% 반영, 새값 5% 반영)
+    # 반응은 느리지만 값은 안정적임
+    field(CALC, "(B > 0) ? (A*0.95 + B*0.05) : A")
+    
+    field(EGU,  "Hours")
+    field(PREC, "2")
+    
+    # 마지막으로 Store 업데이트 트리거
+    field(FLNK, "$(P)$(R)Update:Store")
+}

@@ -1,0 +1,147 @@
+# ------------------------------------------------------------------
+# EPICS Beam Optics Simulator (Transfer Matrix)
+# Model: Source -> Drift1 -> Quadrupole -> Drift2 -> Screen
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 빔 소스 초기 조건 (Initial Beam Parameters)
+# ==================================================================
+
+# 1-1. 초기 위치 (Initial Position x0)
+record(ao, "$(P)$(R)x0") {
+    field(DESC, "Initial Beam Position")
+    field(EGU,  "mm")
+    field(VAL,  "1.0")  # 1mm 벗어난 상태로 시작
+    field(PINI, "YES")
+}
+
+# 1-2. 초기 각도 (Initial Angle x'0)
+record(ao, "$(P)$(R)xp0") {
+    field(DESC, "Initial Beam Angle")
+    field(EGU,  "mrad")
+    field(VAL,  "0.0")  # 평행하게 시작
+    field(PINI, "YES")
+}
+
+# ==================================================================
+# 2. 첫 번째 구간: Drift Space 1
+# ==================================================================
+
+# 2-1. 구간 길이 (L1)
+record(ao, "$(P)$(R)L1") {
+    field(DESC, "Drift 1 Length")
+    field(EGU,  "m")
+    field(VAL,  "1.0")
+    field(PINI, "YES")
+}
+
+# 2-2. Drift 1 통과 후 위치 (x1)
+# x1 = x0 + (L1 * xp0)
+record(calc, "$(P)$(R)x1") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)x0 NPP")   # x0
+    field(INPB, "$(P)$(R)L1 NPP")   # L1
+    field(INPC, "$(P)$(R)xp0 NPP")  # xp0
+    
+    # 단위: [mm] + [m]*[mrad] = [mm] + [mm] (단위 일치)
+    field(CALC, "A + (B * C)")
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# 2-3. Drift 1 통과 후 각도 (xp1)
+# xp1 = xp0 (변화 없음)
+record(calc, "$(P)$(R)xp1") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)xp0 NPP")
+    field(CALC, "A")
+    field(EGU,  "mrad")
+    field(PREC, "3")
+}
+
+# ==================================================================
+# 3. 두 번째 구간: Quadrupole Magnet (Q1)
+# ==================================================================
+
+# 3-1. 자석 세기 K (Strength)
+# K > 0: Focusing (집속), K < 0: Defocusing (발산)
+record(ao, "$(P)$(R)Q1:K") {
+    field(DESC, "Quad Strength")
+    field(EGU,  "m^-2")
+    field(VAL,  "0.0")
+    field(DRVL, "-10.0")
+    field(DRVH, "10.0")
+}
+
+# 3-2. 자석 길이 (Effective Length)
+record(ao, "$(P)$(R)Q1:L") {
+    field(DESC, "Quad Length")
+    field(EGU,  "m")
+    field(VAL,  "0.2")
+    field(PINI, "YES")
+}
+
+# 3-3. Q1 통과 후 위치 (x2)
+# Thin Lens 근사: 위치는 자석 내에서 변하지 않는다고 가정
+# x2 = x1
+record(calc, "$(P)$(R)x2") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)x1 NPP")
+    field(CALC, "A")
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# 3-4. Q1 통과 후 각도 (xp2) - 핵심 물리 로직
+# 렌즈 공식: xp2 = xp1 - (x1 / f)
+# 초점거리 f = 1 / (K * L)
+# 따라서: xp2 = xp1 - (x1 * K * L)
+record(calc, "$(P)$(R)xp2") {
+    field(SCAN, ".1 second")
+    
+    field(INPA, "$(P)$(R)xp1 NPP")  # 입사 각도
+    field(INPB, "$(P)$(R)x1 NPP")   # 입사 위치 (렌즈 중심에서 거리)
+    field(INPC, "$(P)$(R)Q1:K NPP") # K 값
+    field(INPD, "$(P)$(R)Q1:L NPP") # 자석 길이
+    
+    # Kick Angle 계산
+    field(CALC, "A - (B * C * D)")
+    
+    field(EGU,  "mrad")
+    field(PREC, "3")
+}
+
+# ==================================================================
+# 4. 세 번째 구간: Drift Space 2 (to Screen)
+# ==================================================================
+
+# 4-1. 구간 길이 (L2)
+record(ao, "$(P)$(R)L2") {
+    field(DESC, "Drift 2 Length")
+    field(EGU,  "m")
+    field(VAL,  "1.0")
+    field(PINI, "YES")
+}
+
+# 4-2. 최종 스크린 위치 (x_final)
+# x3 = x2 + (L2 * xp2)
+record(calc, "$(P)$(R)x3") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)x2 NPP")   # Q1 출구 위치
+    field(INPB, "$(P)$(R)L2 NPP")   # L2
+    field(INPC, "$(P)$(R)xp2 NPP")  # Q1 출구 각도
+    
+    field(CALC, "A + (B * C)")
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# 4-3. 최종 각도 (xp_final)
+record(calc, "$(P)$(R)xp3") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)xp2 NPP")
+    field(CALC, "A")
+    field(EGU,  "mrad")
+    field(PREC, "3")
+}

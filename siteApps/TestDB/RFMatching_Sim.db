@@ -1,0 +1,139 @@
+# ------------------------------------------------------------------
+# EPICS RF Impedance Matching Simulator
+# Logic: Dual Loop Control (Phase/Mag Error Zeroing)
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 공정 상태 및 플라즈마 부하 (Plant Simulation)
+# ==================================================================
+
+# 1-1. 최적 매칭 포인트 (Plasma Impedance Change)
+# 플라즈마 상태가 변하면 매칭 포인트(정답 위치)가 도망갑니다.
+# 이것이 제어기가 찾아야 할 목표 지점입니다.
+record(ao, "$(P)$(R)Best:Tune") {
+    field(DESC, "Optimal Tune Position")
+    field(VAL,  "50.0") # 초기 정답: 50%
+    field(PINI, "YES")
+}
+record(ao, "$(P)$(R)Best:Load") {
+    field(DESC, "Optimal Load Position")
+    field(VAL,  "50.0") # 초기 정답: 50%
+    field(PINI, "YES")
+}
+
+# 1-2. RF 전원 인가 (Forward Power)
+record(ao, "$(P)$(R)Forward") {
+    field(DESC, "Forward Power")
+    field(EGU,  "W")
+    field(VAL,  "1000.0")
+    field(PINI, "YES")
+}
+
+# 1-3. 매칭 모드 (Manual / Auto)
+record(bo, "$(P)$(R)Mode") {
+    field(DESC, "Matching Mode")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto")
+    field(VAL,  "0")
+}
+
+# ==================================================================
+# 2. 커패시터 위치 제어 (Motor Control)
+# ==================================================================
+
+# 2-1. Tune/Load 수동 설정값 (Manual Setpoint)
+record(ao, "$(P)$(R)Man:Tune") {
+    field(DESC, "Manual Tune Pos")
+    field(EGU,  "%")
+    field(DRVL, "0")
+    field(DRVH, "100")
+    field(VAL,  "0.0")
+}
+record(ao, "$(P)$(R)Man:Load") {
+    field(DESC, "Manual Load Pos")
+    field(EGU,  "%")
+    field(DRVL, "0")
+    field(DRVH, "100")
+    field(VAL,  "0.0")
+}
+
+# 2-2. Tune 커패시터 제어기 (Phase Loop)
+# Auto 모드일 때 Phase Error를 줄이는 방향으로 이동
+record(calc, "$(P)$(R)Pos:Tune") {
+    field(DESC, "Tune Capacitor Position")
+    field(SCAN, ".1 second")
+    
+    # 입력
+    field(INPA, "$(P)$(R)Man:Tune NPP")    # 수동 값
+    field(INPB, "$(P)$(R)Err:Phase NPP")   # 위상 에러 (센서값)
+    field(INPC, "$(P)$(R)Mode NPP")        # 모드 (0:Man, 1:Auto)
+    field(INPD, "$(P)$(R)Pos:Tune NPP")    # 현재 위치 (Self)
+    
+    # 로직 (Integral Control):
+    # Auto(C=1): 현재위치(D) - (에러(B) * 게인 * dt)
+    #   -> 에러가 양수면 위치를 줄이고, 음수면 늘려서 0으로 수렴
+    # Manual(C=0): 수동값(A) 추종
+    field(CALC, "C ? MAX(0, MIN(100, D - (B * 0.5))) : A")
+    
+    field(EGU,  "%")
+    field(PREC, "2")
+}
+
+# 2-3. Load 커패시터 제어기 (Magnitude Loop)
+# Auto 모드일 때 Magnitude Error를 줄이는 방향으로 이동
+record(calc, "$(P)$(R)Pos:Load") {
+    field(DESC, "Load Capacitor Position")
+    field(SCAN, ".1 second")
+    
+    field(INPA, "$(P)$(R)Man:Load NPP")
+    field(INPB, "$(P)$(R)Err:Mag NPP")     # 크기 에러
+    field(INPC, "$(P)$(R)Mode NPP")
+    field(INPD, "$(P)$(R)Pos:Load NPP")
+    
+    field(CALC, "C ? MAX(0, MIN(100, D - (B * 0.5))) : A")
+    
+    field(EGU,  "%")
+    field(PREC, "2")
+    
+    # 위치가 변하면 물리 모델 계산 트리거
+    field(FLNK, "$(P)$(R)Calc:Refl")
+}
+
+# ==================================================================
+# 3. 물리 모델 및 센서 시뮬레이션 (Physics & Sensors)
+# ==================================================================
+
+# 3-1. 가상 에러 센서 (Error Detector)
+# 실제 매처에는 V/I 프로브를 통해 임피던스 차이를 전압(-10V ~ +10V)으로 출력함
+# 여기서는 단순하게 (현재위치 - 최적위치)를 에러로 가정
+record(calc, "$(P)$(R)Err:Phase") {
+    field(INPA, "$(P)$(R)Pos:Tune CP")  # Tune이 변하면 즉시 계산
+    field(INPB, "$(P)$(R)Best:Tune NPP")
+    field(CALC, "A - B") # 정답보다 크면 양수, 작으면 음수
+}
+
+record(calc, "$(P)$(R)Err:Mag") {
+    field(INPA, "$(P)$(R)Pos:Load CP")  # Load가 변하면 즉시 계산
+    field(INPB, "$(P)$(R)Best:Load NPP")
+    field(CALC, "A - B")
+}
+
+# 3-2. 반사 전력 계산 (Reflected Power Calculation)
+# 매칭이 안 될수록(에러가 클수록) 반사 전력이 커짐 (2차 함수 모델)
+record(calc, "$(P)$(R)Calc:Refl") {
+    field(DESC, "Reflected Power Model")
+    
+    field(INPA, "$(P)$(R)Err:Phase NPP") # Tune 오차
+    field(INPB, "$(P)$(R)Err:Mag NPP")   # Load 오차
+    field(INPC, "$(P)$(R)Forward NPP")   # 입력 전력
+    
+    # 로직: 
+    # 오차의 제곱합 (거리의 제곱)에 비례하여 반사 전력 발생
+    # Refl = Forward * Coeff * (Err1^2 + Err2^2)
+    # 오차가 없으면 0W
+    field(CALC, "C * 0.001 * ((A*A) + (B*B))")
+    
+    field(EGU,  "W")
+    field(PREC, "1")
+}

@@ -1,0 +1,167 @@
+# ------------------------------------------------------------------
+# EPICS Virtual Temperature Control System (Full Integrated)
+# Macro: $(P) = Prefix (ex: Sim:), $(R) = Device (ex: Temp:)
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 입력 및 설정 (User Settings)
+# ==================================================================
+
+# 1-1. 히터 출력 설정 (0 ~ 100 %)
+record(ao, "$(P)$(R)Heater:Set") {
+    field(DESC, "User Heater Setting")
+    field(EGU,  "%")
+    field(DRVL, "0")
+    field(DRVH, "100")
+    field(VAL,  "0")
+    field(PINI, "YES")
+}
+
+# 1-2. 인터락 리셋 버튼
+record(bo, "$(P)$(R)Intlk:Reset") {
+    field(DESC, "Reset Interlock Trip")
+    field(ZNAM, "Idle")
+    field(ONAM, "Reset")
+}
+
+# 1-3. 노이즈 크기 설정 (진폭)
+record(ao, "$(P)$(R)Noise:Amp") {
+    field(DESC, "Noise Amplitude")
+    field(VAL,  "2.0")
+    field(PREC, "1")
+}
+
+# 1-4. 과열 경보 기준값 (Interlock Limit)
+record(ao, "$(P)$(R)Intlk:Limit") {
+    field(DESC, "Overheat Limit")
+    field(EGU,  "degC")
+    field(VAL,  "80.0")
+    field(PINI, "YES")
+}
+
+
+# ==================================================================
+# 2. 물리 모델 & 인터락 제어 (Physics & Safety)
+# ==================================================================
+
+# 2-1. 유효 히터 출력 계산 (Effective Power)
+# 인터락이 걸려있으면(C=1), 사용자 설정(A)을 무시하고 0으로 만듦
+# A: Heater Set, C: Interlock Status
+record(calc, "$(P)$(R)Heater:Eff") {
+    field(DESC, "Effective Heater Power")
+    field(SCAN, ".1 second")  # 전체 시뮬레이션의 심장박동(Clock) 역할
+    field(INPA, "$(P)$(R)Heater:Set NPP")
+    field(INPC, "$(P)$(R)Intlk:Status PP") # 인터락 상태를 가져옴
+    
+    # 인터락(C)이 1이면 0, 아니면 설정값(A) 출력
+    field(CALC, "C ? 0 : A")
+    
+    # 계산 후 물리 모델로 진행
+    field(FLNK, "$(P)$(R)Model:Calc")
+}
+
+# 2-2. 물리 모델 시뮬레이션 (가열 및 자연 냉각)
+# A: 현재 실제 온도 (Self)
+# B: 유효 히터 출력 (Heater:Eff)
+record(calc, "$(P)$(R)Model:Calc") {
+    field(DESC, "Physics Simulation")
+    field(INPA, "$(P)$(R)Model:Calc NPP")
+    field(INPB, "$(P)$(R)Heater:Eff NPP")
+    
+    # 물리 상수
+    # Ambient Temp: 25.0도
+    # Heat Gain: B * 0.05 (히터 효율)
+    # Cooling Loss: (A - 25.0) * 0.01 (온도차에 비례하여 식음)
+    field(CALC, "A + (B*0.05) - ((A-25.0)*0.01)")
+    
+    field(EGU,  "degC")
+    field(PREC, "2")
+    
+    # 계산 후 센서 노이즈 처리로 진행
+    field(FLNK, "$(P)$(R)Sensor:Raw")
+}
+
+
+# ==================================================================
+# 3. 센서 및 신호 처리 (Sensor & Signal Processing)
+# ==================================================================
+
+# 3-1. 노이즈 추가 (Raw Sensor Value)
+# 실제 센서는 노이즈가 섞여 들어옴
+# A: 실제 물리 온도 (Model:Calc)
+# B: 노이즈 진폭 (Noise:Amp)
+record(calc, "$(P)$(R)Sensor:Raw") {
+    field(DESC, "Raw Sensor with Noise")
+    field(INPA, "$(P)$(R)Model:Calc NPP")
+    field(INPB, "$(P)$(R)Noise:Amp NPP")
+    
+    # (RNDM-0.5)는 -0.5 ~ 0.5 범위 생성
+    field(CALC, "A + ((RNDM-0.5) * B)")
+    
+    field(PREC, "2")
+    field(FLNK, "$(P)$(R)Sensor:Filt")
+}
+
+# 3-2. Low Pass Filter (Filtered Value)
+# 제어 및 모니터링에 사용할 최종 값
+# A: 노이즈 섞인 값 (Sensor:Raw)
+# B: 이전 필터링 된 값 (Self)
+record(calc, "$(P)$(R)Sensor:Filt") {
+    field(DESC, "Filtered Temperature")
+    field(INPA, "$(P)$(R)Sensor:Raw NPP")
+    field(INPB, "$(P)$(R)Sensor:Filt NPP")
+    
+    # 10%의 새로운 값 + 90%의 이전 값 (강력한 스무딩)
+    field(CALC, "(0.1 * A) + (0.9 * B)")
+    
+    field(PREC, "2")
+    # 필터링 된 값으로 인터락 판단 및 데이터 저장 진행
+    field(FLNK, "$(P)$(R)Intlk:Check")
+}
+
+
+# ==================================================================
+# 4. 인터락 로직 및 데이터 저장 (Logic & Logging)
+# ==================================================================
+
+# 4-1. 인터락 판단 로직 (Interlock Logic)
+# 4-2번 레코드(Status)를 업데이트하기 위한 팬아웃 혹은 직접 계산
+record(calc, "$(P)$(R)Intlk:Check") {
+    field(DESC, "Process Logic Link")
+    # 단순히 순서를 이어주기 위한 더미 레코드 혹은
+    # 나중에 다른 로직 확장을 위해 둠. 
+    # 여기서는 바로 Status와 History로 분기함.
+    field(FLNK, "$(P)$(R)Intlk:Status")
+}
+
+# 4-2. 인터락 상태 및 래치 (Latch)
+# A: 현재 온도 (Sensor:Filt) - 노이즈가 제거된 값 사용
+# B: 제한 온도 (Intlk:Limit)
+# C: 현재 인터락 상태 (Self)
+# D: 리셋 버튼 (Intlk:Reset)
+record(calc, "$(P)$(R)Intlk:Status") {
+    field(DESC, "Interlock Status (0=OK, 1=TRIP)")
+    field(INPA, "$(P)$(R)Sensor:Filt NPP")
+    field(INPB, "$(P)$(R)Intlk:Limit NPP")
+    field(INPC, "$(P)$(R)Intlk:Status NPP")
+    field(INPD, "$(P)$(R)Intlk:Reset NPP")
+    
+    # 로직:
+    # 1. 온도가 한계 초과(A >= B) -> Trip(1)
+    # 2. 이미 Trip(C=1)이고 리셋(D)이 0이면 -> Trip 유지(1)
+    # 3. 그 외(온도 정상이고 리셋 눌림) -> Normal(0)
+    field(CALC, "(A>=B)?1 : ((C&&!D)?1 : 0)")
+    
+    # 상태가 변하면 다음 주기에 Heater:Eff 계산에 반영됨
+    # 또한 데이터를 저장하기 위해 History로 연결
+    field(FLNK, "$(P)$(R)History:Wave")
+}
+
+# 4-3. 원형 버퍼 (Circular Buffer)
+# 최근 200개의 온도 데이터를 배열로 저장 (그래프용)
+record(compress, "$(P)$(R)History:Wave") {
+    field(DESC, "Temperature History")
+    field(INP,  "$(P)$(R)Sensor:Filt NPP")
+    field(ALG,  "Circular Buffer")
+    field(NSAM, "200")  # 배열 크기 (0.1초 * 200 = 최근 20초)
+}

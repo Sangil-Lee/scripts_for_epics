@@ -1,0 +1,110 @@
+# ------------------------------------------------------------------
+# EPICS SiC Crystal Growth Temperature Profiler
+# Algorithm: Slew Rate Limiter (Linear Ramp Generator)
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 설정 (Recipe Parameters)
+# ==================================================================
+
+# 1-1. 목표 온도 (Target Temperature)
+# 최종적으로 도달하고자 하는 온도
+record(ao, "$(P)$(R)Target") {
+    field(DESC, "Final Target Temp")
+    field(EGU,  "degC")
+    field(DRVL, "0")
+    field(DRVH, "2500") # SiC 공정은 2000도 이상
+    field(VAL,  "25.0")
+    field(PINI, "YES")
+}
+
+# 1-2. 승온/감온 속도 (Ramp Rate)
+# 초당 몇 도씩 변할 것인가? (degC/sec)
+# 예: 10분 동안 600도 승온 -> 1.0 deg/sec
+record(ao, "$(P)$(R)Rate") {
+    field(DESC, "Ramp Rate (deg/s)")
+    field(EGU,  "deg/s")
+    field(VAL,  "1.0")
+    field(DRVL, "0.01") # 최소 속도
+    field(DRVH, "50.0") # 최대 속도
+    field(PREC, "2")
+    field(PINI, "YES")
+}
+
+# 1-3. 프로파일러 운전 (Run/Hold)
+# 1: 진행 (Ramp), 0: 일시정지 (Hold)
+record(bo, "$(P)$(R)Run") {
+    field(DESC, "Profiler Run/Hold")
+    field(ZNAM, "Hold")
+    field(ONAM, "Run")
+    field(VAL,  "0")
+}
+
+# ==================================================================
+# 2. 프로파일러 로직 (Ramp Generator)
+# ==================================================================
+
+# 2-1. 현재 설정값 계산 (Calculated SetPoint)
+# 이 레코드가 0.1초마다 돌면서 현재 SP를 조금씩 바꿉니다.
+record(calc, "$(P)$(R)SetPoint") {
+    field(DESC, "Ramping SetPoint")
+    field(SCAN, ".1 second") # 10Hz 업데이트
+    
+    # 입력 링크
+    field(INPA, "$(P)$(R)Target NPP")   # 최종 목표
+    field(INPB, "$(P)$(R)SetPoint NPP") # 현재 SP (Self)
+    field(INPC, "$(P)$(R)Rate NPP")     # 변화 속도
+    field(INPD, "$(P)$(R)Run NPP")      # Run 신호
+    
+    # ---------------------------------------------------------
+    # 로직 설명 (Slew Rate Logic):
+    # 0. dt = 0.1 (Scan Rate)
+    # 1. Step = Rate(C) * 0.1
+    # 2. Diff = Target(A) - Current(B)
+    # 3. Run(D)이 0이면 -> 현재값(B) 유지 (Hold)
+    # 4. Run(D)이 1이면:
+    #    - 오차(Diff)의 절대값이 Step보다 작으면 -> 목표값(A)에 도착 (Snap)
+    #    - 오차가 양수면 -> B + Step (승온)
+    #    - 오차가 음수면 -> B - Step (감온)
+    # ---------------------------------------------------------
+    
+    field(CALC, "D ? (ABS(A-B)<(C*0.1) ? A : (A>B ? B+(C*0.1) : B-(C*0.1))) : B")
+    
+    field(EGU,  "degC")
+    field(PREC, "2")
+    
+    # 계산된 SP를 전기로 모델로 전달
+    field(FLNK, "$(P)$(R)Furnace")
+}
+
+# ==================================================================
+# 3. 가상 전기로 모델 (Virtual SiC Furnace)
+# ==================================================================
+
+# 3-1. 전기로 온도 시뮬레이션
+# 실제로는 히터 출력이 제어하지만, 여기서는 SP를 추종하는 Lag 모델로 구현
+record(calc, "$(P)$(R)Furnace") {
+    field(DESC, "Actual Temp Simulation")
+    field(INPA, "$(P)$(R)Furnace NPP")   # 현재 실제 온도
+    field(INPB, "$(P)$(R)SetPoint NPP")  # 프로파일러가 준 SP
+    
+    # 로직: 실제 온도는 SP를 천천히 따라간다 (열용량 시뮬레이션)
+    # 0.99 * 현재온도 + 0.01 * 목표온도
+    field(CALC, "(0.99 * A) + (0.01 * B)")
+    
+    field(EGU,  "degC")
+    field(PREC, "2")
+}
+
+# 3-2. 공정 상태 모니터링 (Status)
+# 목표 온도에 도달했는지 확인 (Ramp Done?)
+record(calc, "$(P)$(R)Status") {
+    field(SCAN, "1 second")
+    field(INPA, "$(P)$(R)SetPoint NPP")
+    field(INPB, "$(P)$(R)Target NPP")
+    field(INPC, "$(P)$(R)Run NPP")
+    
+    # Run 중이고, 오차가 0.1 미만이면 1 (Stable/Soaking)
+    field(CALC, "C && (ABS(A-B) < 0.1)")
+}

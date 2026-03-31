@@ -1,0 +1,39 @@
+# =============================================================================
+# Long String Test DB - lsi/lso records for UTF-8 strings up to 100 chars
+# =============================================================================
+# lsi = Long String Input  (외부에서 쓰기 가능)
+# lso = Long String Output (IOC 내부에서 설정)
+#
+# SIZV = 버퍼 크기 (바이트)
+#   한글 1자 = UTF-8 3바이트, 100자 = 300바이트 + null = 301
+#   여유있게 512바이트로 설정
+#
+# 주의: lsi는 CA에서 DBF_STRING(40바이트)으로 보임
+#       .VAL$ 접미사로 접근해야 전체 문자열 읽기/쓰기 가능
+# =============================================================================
+
+# --- 쓰기 가능 Long String (HMI TextInput → IOC) ---
+record(lsi, "Test:LongString") {
+    field(DESC, "Long String Input Test")
+    field(SIZV, "512")
+    field(INP,  "")
+}
+
+# --- 읽기 전용 Long String (IOC → HMI 표시용) ---
+record(lso, "Test:LongStringOut") {
+    field(DESC, "Long String Output Test")
+    field(SIZV, "512")
+}
+
+# --- 일반 레코드 (비교용) ---
+record(ai, "Test:Analog") {
+    field(DESC, "Analog Test")
+    field(VAL,  "25.5")
+    field(EGU,  "degC")
+    field(PREC, "1")
+}
+
+record(stringin, "Test:ShortString") {
+    field(DESC, "Standard 40-byte string")
+    field(VAL,  "40바이트 제한 문자열")
+}

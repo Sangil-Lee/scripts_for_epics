@@ -1,0 +1,53 @@
+# Macro: P (Prefix)
+
+# 1. PID Controller (epid)
+record(epid, "$(P)PID:Angle") {
+    field(DESC, "Angle PID Control")
+    
+    # [Trigger & Input]
+    # 물리 엔진의 Theta가 변할 때마다(CP) 즉시 실행
+    field(INP,  "$(P)State:Theta CP")
+    
+    # [Output]
+    # 계산 후 Force에 쓰고, Force 레코드 실행(PP)
+    field(OUTL,  "$(P)In:Force PP")
+    
+    # [CRITICAL SETTINGS]
+    field(FMOD, "PID")          # 1. Feedback Mode: PID 계산 수행
+    field(FBON, "0")          # 1. Feedback Mode: PID 계산 수행
+
+    field(SMSL, "closed_loop")  # 2. Setpoint Mode: STPL 링크 사용
+    field(STPL, "$(P)PID:AngleSP") # Setpoint Link
+    
+    # [Gains]
+    field(KP,   "-40.0")
+    field(KI,   "0.0")
+    field(KD,   "-10.0")
+    
+    # [Limits]
+    field(DRVL, "-50.0")
+    field(DRVH, "50.0")
+    
+    # [Enable Logic]
+    # Enable(0) -> Disable Record.
+    field(SDIS, "$(P)PID:Enable")
+    field(DISV, "0")
+}
+
+# 2. Setpoint
+record(ao, "$(P)PID:AngleSP") {
+    field(DESC, "Target Angle")
+    field(VAL,  "0.0")
+    field(PREC, "3")
+    field(PINI, "YES")
+}
+
+# 3. Enable Switch
+record(bo, "$(P)PID:Enable") {
+    field(DESC, "PID On/Off")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto Balance")
+    field(VAL,  "0")
+    field(OUT,  "$(P)PID:Angle.FBON PP")
+    field(PINI, "YES")
+}

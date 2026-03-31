@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Mass-Spring-Damper</name>
+  <macros>
+    <P>Mass:</P>
+  </macros>
+  <width>1000</width>
+  <height>800</height>
+  <widget type="label" version="2.0.0">
+    <name>Label_Title</name>
+    <text>Mass-Spring-Damper Simulator</text>
+    <width>600</width>
+    <height>40</height>
+    <font>
+      <font name="Header 1" family="Liberation Sans" style="BOLD" size="22.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color name="White" red="255" green="255" blue="255">
+      </color>
+    </foreground_color>
+    <background_color>
+      <color name="Header_Background" red="77" green="77" blue="77">
+      </color>
+    </background_color>
+    <horizontal_alignment>1</horizontal_alignment>
+    <vertical_alignment>1</vertical_alignment>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>Parameters</name>
+    <x>20</x>
+    <y>50</y>
+    <width>260</width>
+    <height>220</height>
+    <widget type="label" version="2.0.0">
+      <name>Label_Mass</name>
+      <text>Mass (m):</text>
+      <y>10</y>
+      <width>80</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <name>Text_Mass</name>
+      <pv_name>$(P)Sim:Mass</pv_name>
+      <x>90</x>
+      <y>10</y>
+      <width>80</width>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Label_K</name>
+      <text>Spring (k):</text>
+      <y>50</y>
+      <width>80</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <name>Text_K</name>
+      <pv_name>$(P)Sim:K</pv_name>
+      <x>90</x>
+      <y>50</y>
+      <width>80</width>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Label_C</name>
+      <text>Damping (c):</text>
+      <y>90</y>
+      <width>80</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <name>Text_C</name>
+      <pv_name>$(P)Sim:C</pv_name>
+      <x>90</x>
+      <y>90</y>
+      <width>80</width>
+    </widget>
+    <widget type="action_button" version="3.0.0">
+      <name>Action_Reset</name>
+      <pv_name>$(P)Sim:Reset</pv_name>
+      <text>RESET / STOP</text>
+      <x>20</x>
+      <y>140</y>
+      <width>180</width>
+      <height>40</height>
+      <background_color>
+        <color name="Attention" red="255" green="160" blue="0">
+        </color>
+      </background_color>
+    </widget>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>Control &amp; Status</name>
+    <x>300</x>
+    <y>50</y>
+    <width>280</width>
+    <height>220</height>
+    <widget type="label" version="2.0.0">
+      <name>Label_Force</name>
+      <text>Force Input (F):</text>
+      <y>10</y>
+    </widget>
+    <widget type="scaledslider" version="2.0.0">
+      <name>Slider_Force</name>
+      <pv_name>$(P)Sim:Force</pv_name>
+      <x>10</x>
+      <y>40</y>
+      <width>220</width>
+      <height>40</height>
+      <minimum>-10.0</minimum>
+      <maximum>10.0</maximum>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <name>Text_Pos</name>
+      <pv_name>$(P)Sim:Pos</pv_name>
+      <x>110</x>
+      <y>100</y>
+      <width>120</width>
+      <precision>3</precision>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Label_Pos</name>
+      <text>Position (x):</text>
+      <x>10</x>
+      <y>100</y>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <name>Text_Vel</name>
+      <pv_name>$(P)Sim:Vel</pv_name>
+      <x>110</x>
+      <y>130</y>
+      <width>120</width>
+      <precision>3</precision>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Label_Vel</name>
+      <text>Velocity (v):</text>
+      <x>10</x>
+      <y>130</y>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <name>Text_Accel</name>
+      <pv_name>$(P)Sim:Accel</pv_name>
+      <x>110</x>
+      <y>160</y>
+      <width>120</width>
+      <precision>3</precision>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <name>Label_Accel</name>
+      <text>Accel (a):</text>
+      <x>10</x>
+      <y>160</y>
+    </widget>
+  </widget>
+  <widget type="stripchart" version="2.1.0">
+    <name>Strip_Chart</name>
+    <x>20</x>
+    <y>280</y>
+    <width>810</width>
+    <height>530</height>
+    <y_axes>
+      <y_axis>
+        <title>Position (m)</title>
+        <autoscale>true</autoscale>
+        <log_scale>false</log_scale>
+        <minimum>-5.0</minimum>
+        <maximum>5.0</maximum>
+        <show_grid>true</show_grid>
+        <visible>true</visible>
+        <color>
+          <color name="Text" red="0" green="0" blue="0">
+          </color>
+        </color>
+      </y_axis>
+      <y_axis>
+        <title>Force (N)</title>
+        <autoscale>true</autoscale>
+        <log_scale>false</log_scale>
+        <minimum>-10.0</minimum>
+        <maximum>10.0</maximum>
+        <show_grid>false</show_grid>
+        <visible>true</visible>
+        <color>
+          <color name="Text" red="0" green="0" blue="0">
+          </color>
+        </color>
+      </y_axis>
+    </y_axes>
+    <traces>
+      <trace>
+        <name>Position</name>
+        <y_pv>$(P)Sim:Pos</y_pv>
+        <axis>0</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="0" green="0" blue="255">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+      <trace>
+        <name>Force</name>
+        <y_pv>$(P)Sim:Force</y_pv>
+        <axis>1</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="255" green="0" blue="0">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+    </traces>
+  </widget>
+</display>

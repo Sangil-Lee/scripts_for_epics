@@ -1,0 +1,18 @@
+menu(menuScan) {
+    choice(menuScanPassive, "Passive")
+    choice(menuScanEvent, "Event")
+    choice(menuScanI_O_Intr, "I/O Intr")
+    # --- 기존 Standard Rates ---
+    choice(menuScan10_second, "10 second")
+    choice(menuScan5_second, "5 second")
+    choice(menuScan2_second, "2 second")
+    choice(menuScan1_second, "1 second")
+    choice(menuScan_5_second, ".5 second")
+    choice(menuScan_2_second, ".2 second")
+    choice(menuScan_1_second, ".1 second")
+    
+    # --- [추가] Custom Fast Rates ---
+    choice(menuScan_05_second, ".05 second")
+    # 필요하다면 더 빠른 것도 추가 가능 (예: .01 second)
+    # choice(menuScan_01_second, ".01 second")
+}

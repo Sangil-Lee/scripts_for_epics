@@ -1,0 +1,119 @@
+# ------------------------------------------------------------------
+# EPICS Local Orbit Bump Simulator (3-Corrector Bump)
+# Model: 1 : -2 : 1 Ratio for Drift Space
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 범프 제어기 (Controller)
+# ==================================================================
+
+# 1-1. 목표 범프 크기 (Amplitude)
+# 사용자는 이 값 하나만 바꿉니다. (Master Knob)
+record(ao, "$(P)$(R)Set:Amp") {
+    field(DESC, "Bump Amplitude at Center")
+    field(EGU,  "mm")
+    field(VAL,  "0.0")
+    field(DRVL, "-10.0")
+    field(DRVH, "10.0")
+    field(PINI, "YES")
+}
+
+# 1-2. 범프 비율 설정 (Ratio Coefficient)
+# 기하학적 구조에 따른 자석 비율 (기본값 1 : -2 : 1)
+record(ao, "$(P)$(R)Ratio:C1") { field(VAL, "1.0")  field(PINI, "YES") }
+record(ao, "$(P)$(R)Ratio:C2") { field(VAL, "-2.0") field(PINI, "YES") }
+record(ao, "$(P)$(R)Ratio:C3") { field(VAL, "1.0")  field(PINI, "YES") }
+
+# ==================================================================
+# 2. 자석 설정값 분배 (Magnet Distribution)
+# ==================================================================
+
+# 2-1. Corrector 1 전류 계산
+# I_1 = Amplitude * Ratio_1
+record(calc, "$(P)$(R)CM1:Set") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Set:Amp NPP")
+    field(INPB, "$(P)$(R)Ratio:C1 NPP")
+    field(CALC, "A * B")
+    field(EGU,  "A")
+    field(PREC, "3")
+}
+
+# 2-2. Corrector 2 전류 계산
+record(calc, "$(P)$(R)CM2:Set") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Set:Amp NPP")
+    field(INPB, "$(P)$(R)Ratio:C2 NPP")
+    field(CALC, "A * B")
+    field(EGU,  "A")
+    field(PREC, "3")
+}
+
+# 2-3. Corrector 3 전류 계산
+record(calc, "$(P)$(R)CM3:Set") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Set:Amp NPP")
+    field(INPB, "$(P)$(R)Ratio:C3 NPP")
+    field(CALC, "A * B")
+    field(EGU,  "A")
+    field(PREC, "3")
+}
+
+# ==================================================================
+# 3. 빔 물리 모델 및 가상 BPM (Physics Simulation)
+# ==================================================================
+# 가정: 자석 간 거리 L = 1m
+# 킥 각도(mrad)는 전류(A)와 1:1로 가정 (Kick = I)
+
+# 3-1. BPM 1 (Upstream) - 범프 시작 전
+# 항상 0이어야 함 (기준점)
+record(ai, "$(P)$(R)BPM1:Pos") {
+    field(VAL, "0.0")
+    field(EGU, "mm")
+}
+
+# 3-2. BPM 2 (Center) - 범프의 피크 지점 (CM2 위치)
+# 위치 = (CM1 킥) * 거리(1m)
+record(calc, "$(P)$(R)BPM2:Pos") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)CM1:Set NPP") # Kick 1
+    
+    # x = theta * L (Small angle approximation)
+    field(CALC, "A * 1.0")
+    
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# 3-3. BPM 3 (Downstream) - 범프 종료 후 (CM3 직후)
+# 여기가 가장 중요합니다. 0이 나와야 범프가 닫힌 것(Closed)입니다.
+# 위치 = (CM1에 의한 변위) + (CM2에 의한 변위)
+# x_final = (CM1 * 2m) + (CM2 * 1m)
+record(calc, "$(P)$(R)BPM3:Pos") {
+    field(DESC, "Orbit Leakage Check")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)CM1:Set NPP") # Kick 1
+    field(INPB, "$(P)$(R)CM2:Set NPP") # Kick 2
+    
+    # CM1에서 2m 이동 + CM2에서 1m 이동
+    field(CALC, "(A * 2.0) + (B * 1.0)")
+    
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# 3-4. 잔류 각도 (Residual Angle)
+# 세 자석을 다 지났을 때 빔이 평행하게 나가는지 확인
+# Angle = C1 + C2 + C3
+record(calc, "$(P)$(R)Exit:Angle") {
+    field(DESC, "Exit Angle Check")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)CM1:Set NPP")
+    field(INPB, "$(P)$(R)CM2:Set NPP")
+    field(INPC, "$(P)$(R)CM3:Set NPP")
+    
+    field(CALC, "A + B + C")
+    field(EGU,  "mrad")
+    field(PREC, "3")
+}

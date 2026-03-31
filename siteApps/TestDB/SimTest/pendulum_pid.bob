@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>InvPendulum Calc Control</name>
+  <macros>
+    <P>Sim:</P>
+  </macros>
+  <width>1200</width>
+  <height>900</height>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <text>Inverted Pendulum: Step 1 Angle Control (Calc)</text>
+    <width>900</width>
+    <height>50</height>
+    <font>
+      <font name="Header 1" family="Liberation Sans" style="BOLD" size="22.0">
+      </font>
+    </font>
+    <foreground_color>
+      <color name="White" red="255" green="255" blue="255">
+      </color>
+    </foreground_color>
+    <background_color>
+      <color red="60" green="60" blue="60">
+      </color>
+    </background_color>
+    <horizontal_alignment>1</horizontal_alignment>
+    <vertical_alignment>1</vertical_alignment>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>Visualization</name>
+    <x>20</x>
+    <y>70</y>
+    <width>420</width>
+    <height>350</height>
+    <background_color>
+      <color red="240" green="240" blue="240">
+      </color>
+    </background_color>
+    <widget type="label" version="2.0.0">
+      <text>Cart Position (x):</text>
+      <x>10</x>
+      <y>10</y>
+      <width>200</width>
+      <font>
+        <font family="" style="BOLD" size="14.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="progressbar" version="2.0.0">
+      <name>Bar_Pos</name>
+      <pv_name>$(P)State:X</pv_name>
+      <x>10</x>
+      <y>40</y>
+      <width>360</width>
+      <height>40</height>
+      <limits_from_pv>false</limits_from_pv>
+      <minimum>-10.0</minimum>
+      <maximum>10.0</maximum>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>&lt;- Left (-)</text>
+      <x>10</x>
+      <y>85</y>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Right (+) -&gt;</text>
+      <x>270</x>
+      <y>85</y>
+      <horizontal_alignment>2</horizontal_alignment>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Pendulum Angle (Theta):</text>
+      <x>10</x>
+      <y>130</y>
+      <width>250</width>
+      <font>
+        <font family="" style="BOLD" size="14.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="meter" version="3.0.0">
+      <name>Meter_Theta</name>
+      <pv_name>$(P)State:Theta</pv_name>
+      <x>60</x>
+      <y>160</y>
+      <width>260</width>
+      <height>150</height>
+      <limits_from_pv>false</limits_from_pv>
+      <minimum>-1.57</minimum>
+      <maximum>1.57</maximum>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>0 = Upright</text>
+      <x>130</x>
+      <y>310</y>
+      <width>120</width>
+      <horizontal_alignment>1</horizontal_alignment>
+    </widget>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>Simulation_Control</name>
+    <x>460</x>
+    <y>70</y>
+    <width>420</width>
+    <height>160</height>
+    <style>1</style>
+    <widget type="label" version="2.0.0">
+      <name>Label_Sim</name>
+      <text>Physics Simulation</text>
+      <width>420</width>
+      <height>30</height>
+      <font>
+        <font family="" style="BOLD" size="12.0">
+        </font>
+      </font>
+      <background_color>
+        <color red="200" green="200" blue="200">
+        </color>
+      </background_color>
+      <transparent>false</transparent>
+      <horizontal_alignment>1</horizontal_alignment>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Manual Force (N):</text>
+      <x>220</x>
+      <y>40</y>
+    </widget>
+    <widget type="scaledslider" version="2.0.0">
+      <name>Slider_Force</name>
+      <pv_name>$(P)In:Force</pv_name>
+      <x>220</x>
+      <y>60</y>
+      <width>180</width>
+      <height>40</height>
+      <minimum>-25.0</minimum>
+      <maximum>25.0</maximum>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Time Step (dt):</text>
+      <x>10</x>
+      <y>110</y>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <pv_name>$(P)Param:dt</pv_name>
+      <x>120</x>
+      <y>110</y>
+      <width>80</width>
+    </widget>
+    <widget type="bool_button" version="2.0.0">
+      <name>Boolean Button</name>
+      <pv_name>$(P)Cmd:Reset</pv_name>
+      <x>10</x>
+      <y>39</y>
+      <width>161</width>
+      <height>50</height>
+      <off_label>Run</off_label>
+      <on_label>Reset</on_label>
+      <show_led>false</show_led>
+    </widget>
+  </widget>
+  <widget type="group" version="3.0.0">
+    <name>PID_Control</name>
+    <x>460</x>
+    <y>240</y>
+    <width>420</width>
+    <height>250</height>
+    <style>1</style>
+    <widget type="label" version="2.0.0">
+      <name>Label_PID</name>
+      <text>PID Controller (Angle Only)</text>
+      <width>420</width>
+      <height>30</height>
+      <font>
+        <font family="" style="BOLD" size="12.0">
+        </font>
+      </font>
+      <background_color>
+        <color red="180" green="210" blue="255">
+        </color>
+      </background_color>
+      <transparent>false</transparent>
+      <horizontal_alignment>1</horizontal_alignment>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Kp (Angle Gain):</text>
+      <x>20</x>
+      <y>100</y>
+      <width>120</width>
+      <font>
+        <font family="" style="BOLD" size="14.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <pv_name>$(P)PID:AngleKp</pv_name>
+      <x>150</x>
+      <y>95</y>
+      <width>80</width>
+      <height>30</height>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Kd (Damping):</text>
+      <x>20</x>
+      <y>140</y>
+      <width>120</width>
+      <font>
+        <font family="" style="BOLD" size="14.0">
+        </font>
+      </font>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <pv_name>$(P)PID:AngleKd</pv_name>
+      <x>150</x>
+      <y>135</y>
+      <width>80</width>
+      <height>30</height>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Setpoint (rad):</text>
+      <x>250</x>
+      <y>100</y>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <pv_name>$(P)PID:AngleSP</pv_name>
+      <x>340</x>
+      <y>95</y>
+      <width>60</width>
+      <height>30</height>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>PID Output (Force):</text>
+      <x>20</x>
+      <y>190</y>
+      <width>150</width>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <pv_name>$(P)PID:AngleCalc</pv_name>
+      <x>160</x>
+      <y>190</y>
+    </widget>
+    <widget type="led" version="2.0.0">
+      <pv_name>$(P)PID:Enable</pv_name>
+      <x>270</x>
+      <y>190</y>
+    </widget>
+    <widget type="bool_button" version="2.0.0">
+      <name>Boolean Button_1</name>
+      <pv_name>$(P)PID:Enable</pv_name>
+      <y>41</y>
+      <width>400</width>
+      <height>50</height>
+      <off_label>PID OFF</off_label>
+      <on_label>PID ON</on_label>
+      <show_led>false</show_led>
+    </widget>
+  </widget>
+  <widget type="stripchart" version="2.1.0">
+    <name>StripChart</name>
+    <x>20</x>
+    <y>430</y>
+    <width>420</width>
+    <height>390</height>
+    <y_axes>
+      <y_axis>
+        <title>Rad / Meter</title>
+        <autoscale>true</autoscale>
+        <log_scale>false</log_scale>
+        <minimum>0.0</minimum>
+        <maximum>100.0</maximum>
+        <show_grid>false</show_grid>
+        <visible>true</visible>
+        <color>
+          <color name="Text" red="0" green="0" blue="0">
+          </color>
+        </color>
+      </y_axis>
+    </y_axes>
+    <traces>
+      <trace>
+        <name>Angle (Theta)</name>
+        <y_pv>$(P)State:Theta</y_pv>
+        <axis>0</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="255" green="0" blue="0">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+      <trace>
+        <name>Position (X)</name>
+        <y_pv>$(P)State:X</y_pv>
+        <axis>0</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="0" green="0" blue="255">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+    </traces>
+  </widget>
+  <widget type="stripchart" version="2.1.0">
+    <name>StripChart_Force</name>
+    <x>460</x>
+    <y>500</y>
+    <width>580</width>
+    <height>360</height>
+    <y_axes>
+      <y_axis>
+        <title>Force (N)</title>
+        <autoscale>false</autoscale>
+        <log_scale>false</log_scale>
+        <minimum>-25.0</minimum>
+        <maximum>25.0</maximum>
+        <show_grid>false</show_grid>
+        <visible>true</visible>
+        <color>
+          <color name="Text" red="0" green="0" blue="0">
+          </color>
+        </color>
+      </y_axis>
+    </y_axes>
+    <traces>
+      <trace>
+        <name>Control Force</name>
+        <y_pv>$(P)In:Force</y_pv>
+        <axis>0</axis>
+        <trace_type>2</trace_type>
+        <color>
+          <color red="0" green="128" blue="0">
+          </color>
+        </color>
+        <line_width>2</line_width>
+        <point_type>0</point_type>
+        <point_size>10</point_size>
+        <visible>true</visible>
+      </trace>
+    </traces>
+  </widget>
+</display>

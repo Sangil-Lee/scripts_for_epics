@@ -1,0 +1,114 @@
+# ------------------------------------------------------------------
+# EPICS Virtual Vacuum Pumping Simulator
+# Macro: $(P) = Prefix (ex: Sim:), $(R) = Device (ex: Vac:)
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 제어 패널 (User Controls)
+# ==================================================================
+
+# 1-1. RP (Rotary Pump) 스위치
+record(bo, "$(P)$(R)RP:Sw") {
+    field(DESC, "Roughing Pump Switch")
+    field(ZNAM, "Off")
+    field(ONAM, "On")
+    field(VAL,  "0")
+}
+
+# 1-2. TMP (Turbo Pump) 스위치
+record(bo, "$(P)$(R)TMP:Sw") {
+    field(DESC, "Turbo Pump Switch")
+    field(ZNAM, "Off")
+    field(ONAM, "On")
+    field(VAL,  "0")
+}
+
+# 1-3. 가상 누설 (Leak) 크기 조절
+# 값을 올리면 진공이 잘 안 잡히거나, 펌프를 껐을 때 압력이 빨리 오름
+record(ao, "$(P)$(R)Leak:Rate") {
+    field(DESC, "Leak Rate")
+    field(VAL,  "0.001")
+    field(PREC, "4")
+}
+
+# 1-4. 시스템 리셋 (대기압으로 초기화)
+record(bo, "$(P)$(R)Reset") {
+    field(DESC, "Vent to Atmosphere")
+    field(ZNAM, "Idle")
+    field(ONAM, "Vent")
+    field(VAL,  "0")
+}
+
+# ==================================================================
+# 2. 인터락 로직 (Interlock Logic)
+# ==================================================================
+
+# 2-1. TMP 가동 허가 (Interlock)
+# 조건: 현재 압력이 1.0 Torr 이하일 때만 TMP 동작 허용
+# A: 현재 압력 (Simulation Value)
+record(calc, "$(P)$(R)TMP:Permit") {
+    field(DESC, "Allow TMP Start if P < 1.0")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Pres:Sim NPP")
+    
+    # 압력(A)이 1.0보다 작으면 1(OK), 아니면 0(Fail)
+    field(CALC, "A < 1.0 ? 1 : 0")
+}
+
+# 2-2. 실제 TMP 상태 (Actual Status)
+# 사용자 스위치가 On이고 + 허가(Permit)가 있어야만 진짜로 돔
+record(calc, "$(P)$(R)TMP:Sts") {
+    field(DESC, "Actual TMP Run Status")
+    field(INPA, "$(P)$(R)TMP:Sw NPP")    # 사용자 스위치
+    field(INPB, "$(P)$(R)TMP:Permit PP") # 허가 신호
+    
+    # 스위치(A)와 허가(B)가 둘 다 1이어야 1
+    field(CALC, "A && B")
+}
+
+# ==================================================================
+# 3. 물리 모델 시뮬레이션 (Physics Engine)
+# ==================================================================
+#
+# 3-1. 진공 압력 계산 (핵심 로직 수정됨)
+record(calc, "$(P)$(R)Pres:Sim") {
+    field(DESC, "Vacuum Pressure Model")
+    field(SCAN, ".1 second")
+    
+    # 입력 링크
+    field(INPA, "$(P)$(R)Pres:Sim NPP")  # 현재 압력
+    field(INPB, "$(P)$(R)RP:Sw NPP")     # RP 상태
+    field(INPC, "$(P)$(R)TMP:Sts PP")    # TMP 상태 (인터락 포함)
+    field(INPD, "$(P)$(R)Leak:Rate NPP") # 누설률
+    field(INPE, "$(P)$(R)Reset NPP")     # 리셋 버튼
+    
+    # ---------------------------------------------------
+    # 수정된 수식 설명 (CALC)
+    # ---------------------------------------------------
+    # 1. Reset(E=1) -> 760 (대기압)
+    # 2. TMP On (C=1) -> MAX(1e-12, A*0.7)
+    #    : 기존에는 A*0.7로 계속 떨어졌으나, 
+    #      이제는 1e-12보다 작아지면 1e-12를 유지합니다.
+    # 3. RP On (B=1) -> MAX(0.01, A*0.95)
+    #    : RP의 한계는 0.01 Torr로 유지
+    # 4. All Off -> Leak에 의해 압력 상승
+    # ---------------------------------------------------
+    
+    field(CALC, "E ? 760 : (C ? MAX(1e-12, A*0.7) : (B ? MAX(0.01, A*0.95) : A+(760-A)*D))")
+    
+    field(PREC, "12") # 1e-12 까지 확인하기 위해 소수점 자리수 늘림
+    field(EGU,  "Torr")
+    field(VAL,  "759.9")
+}
+
+# 3-2. 로그 스케일 변환 (지난번 LOG 수정 반영됨)
+record(calc, "$(P)$(R)Pres:Log") {
+    field(DESC, "Log10 Pressure")
+    field(SCAN, ".5 second")
+    field(INPA, "$(P)$(R)Pres:Sim NPP")
+    
+    # 로그 계산 시 0이나 음수 방지 (최소값을 1e-13 정도로 잡음)
+    field(CALC, "LOG(MAX(1e-13, A))") 
+    field(PREC, "2")
+}
+

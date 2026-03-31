@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Mixing Tank</name>
+  <width>900</width>
+  <height>650</height>
+  
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <text>Mixing Tank &amp; Temp Control</text>
+    <width>900</width> <height>50</height>
+    <font><font name="Header 1" family="Liberation Sans" style="BOLD" size="24.0"/></font>
+    <horizontal_alignment>1</horizontal_alignment>
+  </widget>
+
+  <widget type="group" version="2.0.0">
+    <name>Process</name>
+    <x>30</x> <y>60</y> <width>400</width> <height>400</height>
+    
+    <widget type="polygon" version="2.0.0">
+      <points> <point x="20.0" y="20.0"/> <point x="100.0" y="20.0"/> <point x="100.0" y="50.0"/> <point x="20.0" y="50.0"/> </points>
+      <background_color><color red="255" green="100" blue="100"/></background_color>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Hot (80C)</text> <x>20</x> <y>0</y> <width>80</width>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <pv_name>SIM:ValveHot</pv_name> <x>30</x> <y>25</y> <width>50</width>
+    </widget>
+
+    <widget type="polygon" version="2.0.0">
+      <points> <point x="280.0" y="20.0"/> <point x="360.0" y="20.0"/> <point x="360.0" y="50.0"/> <point x="280.0" y="50.0"/> </points>
+      <background_color><color red="100" green="100" blue="255"/></background_color>
+    </widget>
+    <widget type="label" version="2.0.0">
+      <text>Cold (10C)</text> <x>290</x> <y>0</y> <width>80</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <pv_name>SIM:ValveCold</pv_name> <x>290</x> <y>25</y> <width>50</width>
+    </widget>
+
+    <widget type="tank" version="2.0.0">
+      <pv_name>SIM:Level</pv_name>
+      <x>100</x> <y>60</y> <width>180</width> <height>250</height>
+      <fill_color><color red="200" green="0" blue="200" alpha="150"/></fill_color> </widget>
+
+    <widget type="thermometer" version="2.0.0">
+      <pv_name>SIM:TankTemp</pv_name>
+      <x>300</x> <y>100</y> <width>60</width> <height>200</height>
+      <limits_from_pv>false</limits_from_pv>
+      <minimum>0</minimum> <maximum>100</maximum>
+    </widget>
+    <widget type="textupdate" version="2.0.0">
+      <pv_name>SIM:TankTemp</pv_name>
+      <x>300</x> <y>310</y> <width>60</width>
+      <font><font name="Header 3" family="Liberation Sans" style="BOLD" size="14.0"/></font>
+    </widget>
+
+    <widget type="label" version="2.0.0">
+      <text>Drain Valve</text> <x>100</x> <y>330</y>
+    </widget>
+    <widget type="scrollbar" version="2.0.0">
+      <pv_name>SIM:ValveDrain</pv_name> <x>100</x> <y>350</y> <width>180</width>
+    </widget>
+  </widget>
+
+  <widget type="group" version="2.0.0">
+    <name>Temp Controller</name>
+    <x>450</x> <y>60</y> <width>400</width> <height>500</height>
+    
+    <widget type="label" version="2.0.0">
+      <text>Target Temp (SP):</text> <x>20</x> <y>20</y> <width>150</width>
+    </widget>
+    <widget type="textentry" version="3.0.0">
+      <pv_name>SIM:TempSP</pv_name> <x>150</x> <y>20</y> <width>80</width>
+    </widget>
+    <widget type="scrollbar" version="2.0.0">
+      <pv_name>SIM:TempSP</pv_name> <x>20</x> <y>50</y> <width>340</width>
+    </widget>
+
+    <widget type="group" version="2.0.0">
+      <name>Gains</name>
+      <x>20</x> <y>90</y> <width>340</width> <height>80</height>
+      <widget type="label" version="2.0.0"> <text>Kp</text> <x>10</x> <y>10</y> <width>30</width> </widget>
+      <widget type="textentry" version="3.0.0"> <pv_name>SIM:Kp</pv_name> <x>40</x> <y>10</y> <width>60</width> </widget>
+      
+      <widget type="label" version="2.0.0"> <text>Ki</text> <x>120</x> <y>10</y> <width>30</width> </widget>
+      <widget type="textentry" version="3.0.0"> <pv_name>SIM:Ki</pv_name> <x>150</x> <y>10</y> <width>60</width> </widget>
+
+      <widget type="label" version="2.0.0"> <text>Kd</text> <x>230</x> <y>10</y> <width>30</width> </widget>
+      <widget type="textentry" version="3.0.0"> <pv_name>SIM:Kd</pv_name> <x>260</x> <y>10</y> <width>60</width> </widget>
+    </widget>
+
+    <widget type="stripchart" version="3.0.0">
+      <name>TempChart</name>
+      <x>20</x> <y>190</y> <width>340</width> <height>260</height>
+      <y_axes>
+        <y_axis> <title>Temp (C)</title> <autoscale>false</autoscale> <minimum>0</minimum> <maximum>100</maximum> </y_axis>
+        <y_axis> <title>Valve (%)</title> <autoscale>false</autoscale> <minimum>0</minimum> <maximum>100</maximum> </y_axis>
+      </y_axes>
+      <traces>
+        <trace>
+          <name>Temp PV</name> <y_pv>SIM:TankTemp</y_pv> <axis>0</axis>
+          <color><color red="255" green="0" blue="255"/></color>
+        </trace>
+        <trace>
+          <name>Temp SP</name> <y_pv>SIM:TempSP</y_pv> <axis>0</axis>
+          <color><color red="0" green="0" blue="0"/></color> <trace_type>2</trace_type>
+        </trace>
+        <trace>
+          <name>Hot Valve</name> <y_pv>SIM:ValveHot</y_pv> <axis>1</axis>
+          <color><color red="255" green="0" blue="0"/></color> <line_style>2</line_style>
+        </trace>
+      </traces>
+    </widget>
+  </widget>
+</display>

@@ -1,0 +1,43 @@
+record(bi, "$(P)Red")
+{
+    field(ZNAM, "Red Off")
+    field(ONAM, "Red On")
+    field(ZSV, "NO_ALARM")
+    field(OSV, "MAJOR")
+    field(VAL,  "0")
+}
+
+record(bi, "$(P)Yellow")
+{
+    field(ZNAM, "Yellow Off")
+    field(ONAM, "Yellow On")
+    field(ZSV, "NO_ALARM")
+    field(OSV, "MAJOR")
+    field(VAL,  "0")
+}
+
+record(bi, "$(P)Green")
+{
+    field(ZNAM, "Green Off")
+    field(ONAM, "Green On")
+    field(ZSV, "NO_ALARM")
+    field(OSV, "MAJOR")
+    field(VAL,  "0")
+}
+
+record(bi, "$(P)Night")
+{
+    field(ZNAM, "Night Off")
+    field(ONAM, "Night On")
+    field(ZSV, "NO_ALARM")
+    field(OSV, "MAJOR")
+    field(VAL,  "0")
+}
+
+record(ao, "$(P)Period")
+{
+    field(PINI,  "YES")
+    field(DRVH,  "3.0")
+    field(DRVL,  "0.5")
+    field(VAL,  "0.5")
+}

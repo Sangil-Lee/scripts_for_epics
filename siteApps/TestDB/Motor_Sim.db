@@ -1,0 +1,124 @@
+# ------------------------------------------------------------------
+# EPICS Virtual Motor Simulator (Base Records Only)
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 명령 (User Commands)
+# ==================================================================
+
+# 1-1. 목표 위치 (Target Position)
+record(ao, "$(P)$(R)SetPoint") {
+    field(DESC, "Target Position")
+    field(VAL,  "0.0")
+    field(DRVL, "0")
+    field(DRVH, "100")
+    field(EGU,  "mm")
+    field(PREC, "2")
+    field(PINI, "YES")
+}
+
+# 1-2. 이동 속도 (Velocity)
+record(ao, "$(P)$(R)Velocity") {
+    field(DESC, "Speed (mm/sec)")
+    field(VAL,  "5.0")
+    field(DRVL, "0.1") # 최소 속도
+    field(DRVH, "20.0") # 최대 속도
+    field(EGU,  "mm/s")
+    field(PREC, "1")
+    field(PINI, "YES")
+}
+
+# 1-3. 이동 시작/정지 (Go / Stop)
+# 1: 이동 허용, 0: 강제 정지
+record(bo, "$(P)$(R)Go") {
+    field(DESC, "Motion Enable")
+    field(ZNAM, "Stop")
+    field(ONAM, "Go")
+    field(VAL,  "0")
+}
+
+# ==================================================================
+# 2. 모터 물리 엔진 (Physics Engine)
+# ==================================================================
+
+# 2-1. 위치 시뮬레이션 (Position Calculator)
+# 여기가 모터 드라이버 역할을 합니다.
+record(calc, "$(P)$(R)Pos") {
+    field(DESC, "Motor Position Simulation")
+    field(SCAN, ".1 second") # 10Hz 업데이트
+    
+    # 입력 링크
+    field(INPA, "$(P)$(R)SetPoint NPP") # 목표 위치
+    field(INPB, "$(P)$(R)Pos NPP")      # 현재 위치 (Self)
+    field(INPC, "$(P)$(R)Velocity NPP") # 속도
+    field(INPD, "$(P)$(R)Go NPP")       # 운전 허가
+    
+    # -----------------------------------------------------------
+    # 로직 설명 (변수 해석)
+    # -----------------------------------------------------------
+    # Step = C * 0.1 (속도 * 시간간격)
+    # Diff = A - B (남은 거리)
+    #
+    # 1. D(Go)가 0이면 -> 현재 위치(B) 유지 (정지)
+    # 2. ABS(Diff) < Step 이면 -> 목표(A)로 점프 (도착)
+    # 3. Diff > 0 이면 -> B + Step (정방향 이동)
+    # 4. Diff < 0 이면 -> B - Step (역방향 이동)
+    # 5. 최종 결과는 0~100 사이로 제한 (Limit)
+    # -----------------------------------------------------------
+    
+    field(CALC, "D ? (ABS(A-B)<(C*0.1) ? A : (A>B ? B+(C*0.1) : B-(C*0.1))) : B")
+    
+    # 하드웨어 리미트 (Hard Limits) 구현
+    # 계산된 값이 0보다 작으면 0, 100보다 크면 100
+    # (위의 CALC 결과를 OCAL로 보내서 한 번 더 가공할 수도 있지만,
+    # 여기서는 간단히 다음 레코드에서 리미트 스위치를 판단함)
+    
+    field(EGU,  "mm")
+    field(PREC, "2")
+    field(FLNK, "$(P)$(R)Status:Calc")
+}
+
+# ==================================================================
+# 3. 상태 피드백 (Status Feedback)
+# ==================================================================
+
+# 3-1. 상태 판단 (Moving, Done, Limit)
+# 위치가 변했는지, 리미트를 쳤는지 판단
+record(calc, "$(P)$(R)Status:Calc") {
+    field(SCAN, "Passive")
+    field(INPA, "$(P)$(R)Pos NPP")      # 현재 위치
+    field(INPB, "$(P)$(R)SetPoint NPP") # 목표 위치
+    
+    # 목표와 현재값의 차이가 아주 작으면(0.001) 도착한 것으로 간주
+    # 도착했으면 1 (Done), 움직이는 중이면 0 (Moving)
+    field(CALC, "ABS(A-B) < 0.001")
+    
+    field(FLNK, "$(P)$(R)DMOV")
+}
+
+# 3-2. DMOV (Done Moving)
+# 실제 모터 레코드의 DMOV 필드 흉내
+record(bi, "$(P)$(R)DMOV") {
+    field(DESC, "Done Moving (1=Done, 0=Moving)")
+    field(INP,  "$(P)$(R)Status:Calc NPP")
+    field(ZNAM, "Moving")
+    field(ONAM, "Done")
+    # 값이 바뀔 때마다 Monitor 발생하도록
+}
+
+# 3-3. High Limit Switch (HLS)
+# 위치가 100 이상이면 1
+record(calc, "$(P)$(R)HLS") {
+    field(SCAN, ".2 second")
+    field(INPA, "$(P)$(R)Pos NPP")
+    field(CALC, "A >= 100")
+}
+
+# 3-4. Low Limit Switch (LLS)
+# 위치가 0 이하면 1
+record(calc, "$(P)$(R)LLS") {
+    field(SCAN, ".2 second")
+    field(INPA, "$(P)$(R)Pos NPP")
+    field(CALC, "A <= 0")
+}

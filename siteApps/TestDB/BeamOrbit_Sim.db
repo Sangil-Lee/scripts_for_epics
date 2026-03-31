@@ -1,0 +1,149 @@
+# ------------------------------------------------------------------
+# EPICS Beam Orbit Feedback Simulator (MIMO System)
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 환경 및 외란 (Environment & Disturbance)
+# ==================================================================
+
+# 1-1. 빔 진동 소스 (Noise Generator)
+# 0.5Hz의 느린 진동(Sin) + 빠른 노이즈(Rndm) 혼합
+record(calc, "$(P)$(R)Noise:Src") {
+    field(DESC, "Beam Vibration Source")
+    field(SCAN, ".1 second")
+    
+    # A: 시간 카운터 (0~360 반복)
+    field(INPA, "$(P)$(R)Noise:Tick NPP")
+    # B: 노이즈 크기
+    field(INPB, "$(P)$(R)Noise:Amp NPP")
+    
+    # SIN(A) * 2.0  : 2mm 크기의 느린 진동
+    # (RNDM-0.5)*0.5 : 0.5mm 크기의 빠른 잡음
+    field(CALC, "(SIN(A/10)*2.0 + (RNDM-0.5)*0.5) * B")
+    field(FLNK, "$(P)$(R)Noise:Tick")
+}
+
+# 시간 카운터
+record(calc, "$(P)$(R)Noise:Tick") {
+    field(INPA, "$(P)$(R)Noise:Tick NPP")
+    field(CALC, "(A+1)%63") # 약 2PI * 10 주기
+}
+
+# 노이즈 증폭율 (0이면 빔이 고정됨)
+record(ao, "$(P)$(R)Noise:Amp") {
+    field(DESC, "Disturbance Scale")
+    field(VAL,  "1.0")
+    field(PINI, "YES")
+}
+
+# ==================================================================
+# 2. 하드웨어: 자석 및 BPM (Magnets & Sensors)
+# ==================================================================
+
+# 2-1. Corrector Magnet 1 (CM1)
+record(ao, "$(P)$(R)CM1:Set") {
+    field(DESC, "Corrector 1 Current")
+    field(EGU,  "A")
+    field(VAL,  "0")
+    field(DRVL, "-10")
+    field(DRVH, "10")
+}
+
+# 2-2. Corrector Magnet 2 (CM2)
+record(ao, "$(P)$(R)CM2:Set") {
+    field(DESC, "Corrector 2 Current")
+    field(EGU,  "A")
+    field(VAL,  "0")
+    field(DRVL, "-10")
+    field(DRVH, "10")
+}
+
+# 2-3. BPM 1 읽기 (Coupling Model 포함)
+# BPM1 = (CM1 * 1.0) + (CM2 * 0.3) + Noise
+record(calc, "$(P)$(R)BPM1:Pos") {
+    field(DESC, "Beam Position Monitor 1")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)CM1:Set NPP")
+    field(INPB, "$(P)$(R)CM2:Set NPP")
+    field(INPC, "$(P)$(R)Noise:Src NPP")
+    
+    # 물리 모델: CM1이 주도적이지만, CM2의 영향도 30% 받음
+    field(CALC, "(A * 1.0) + (B * 0.3) + C")
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# 2-4. BPM 2 읽기 (Coupling Model 포함)
+# BPM2 = (CM1 * 0.2) + (CM2 * 0.8) + Noise
+record(calc, "$(P)$(R)BPM2:Pos") {
+    field(DESC, "Beam Position Monitor 2")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)CM1:Set NPP")
+    field(INPB, "$(P)$(R)CM2:Set NPP")
+    field(INPC, "$(P)$(R)Noise:Src NPP")
+    
+    # 물리 모델: CM2가 주도적이지만, CM1의 영향도 20% 받음 (위상이 다를수 있음)
+    field(CALC, "(A * 0.2) + (B * 0.8) + C")
+    field(EGU,  "mm")
+    field(PREC, "3")
+}
+
+# ==================================================================
+# 3. 궤도 피드백 컨트롤러 (Orbit Feedback Controller)
+# ==================================================================
+
+# 3-1. 피드백 제어 스위치
+record(bo, "$(P)$(R)FB:Run") {
+    field(DESC, "Orbit Feedback On/Off")
+    field(ZNAM, "Open Loop")
+    field(ONAM, "Closed Loop")
+    field(VAL,  "0")
+}
+
+# 3-2. 피드백 게인 (Gain)
+# 값이 클수록 빨리 잡지만 발진(Oscillation) 위험 있음
+record(ao, "$(P)$(R)FB:Gain") {
+    field(DESC, "Correction Gain")
+    field(VAL,  "0.5") 
+    field(PREC, "2")
+}
+
+# 3-3. 피드백 계산 엔진 (Slow Orbit Feedback)
+# 적분 제어 방식: New_Current = Old_Current - (BPM_Error * Gain)
+record(calcout, "$(P)$(R)FB:Calc1") {
+    field(DESC, "Correction Logic for CM1")
+    field(SCAN, ".2 second") # BPM보다 약간 느리게 동작 (안정성)
+    
+    # A: BPM1 오차 (목표는 0이므로 현재값이 곧 오차)
+    field(INPA, "$(P)$(R)BPM1:Pos NPP")
+    # B: 현재 CM1 설정값
+    field(INPB, "$(P)$(R)CM1:Set NPP")
+    # C: 피드백 게인
+    field(INPC, "$(P)$(R)FB:Gain NPP")
+    # D: 실행 여부
+    field(INPD, "$(P)$(R)FB:Run NPP")
+    
+    # 실행 중이면: 현재값(B) - (오차(A) * 게인(C))
+    # 실행 아니면: 현재값(B) 유지
+    field(CALC, "D ? (B - (A * C)) : B")
+    
+    # 계산된 값을 실제 자석에 씀 (Output Link)
+    field(OUT,  "$(P)$(R)CM1:Set PP")
+}
+
+record(calcout, "$(P)$(R)FB:Calc2") {
+    field(DESC, "Correction Logic for CM2")
+    field(SCAN, ".2 second")
+    
+    field(INPA, "$(P)$(R)BPM2:Pos NPP") # BPM2를 보고
+    field(INPB, "$(P)$(R)CM2:Set NPP")  # CM2를 조절
+    field(INPC, "$(P)$(R)FB:Gain NPP")
+    field(INPD, "$(P)$(R)FB:Run NPP")
+    
+    # 적분 제어 (Integral Action)
+    field(CALC, "D ? (B - (A * C)) : B")
+    
+    # 계산된 값을 실제 자석에 씀
+    field(OUT,  "$(P)$(R)CM2:Set PP")
+}

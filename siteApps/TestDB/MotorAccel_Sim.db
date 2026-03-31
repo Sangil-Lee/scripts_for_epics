@@ -1,0 +1,118 @@
+# ------------------------------------------------------------------
+# EPICS Virtual Motor with Soft Acceleration/Deceleration
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 설정 (Settings)
+# ==================================================================
+
+# 1-1. 목표 위치 (Target Position)
+record(ao, "$(P)$(R)SetPoint") {
+    field(DESC, "Target Position")
+    field(VAL,  "0.0")
+    field(DRVL, "0")
+    field(DRVH, "200")
+    field(EGU,  "mm")
+    field(PREC, "2")
+    field(PINI, "YES")
+}
+
+# 1-2. 최대 속도 (Max Velocity)
+record(ao, "$(P)$(R)MaxVel") {
+    field(DESC, "Max Speed Limit")
+    field(VAL,  "10.0")
+    field(EGU,  "mm/s")
+    field(PINI, "YES")
+}
+
+# 1-3. 가속도/관성 계수 (Acceleration Factor)
+# 0.01 (매우 무거움/느림) ~ 1.0 (즉시 반응)
+# 값이 작을수록 부드럽게 출발하고 부드럽게 섭니다.
+record(ao, "$(P)$(R)Accel") {
+    field(DESC, "Inertia Factor (0.0~1.0)")
+    field(VAL,  "0.05") 
+    field(DRVL, "0.001")
+    field(DRVH, "1.0")
+    field(PINI, "YES")
+}
+
+# 1-4. 이동 허가 (Enable)
+record(bo, "$(P)$(R)Enable") {
+    field(DESC, "Servo On/Off")
+    field(ZNAM, "Disable")
+    field(ONAM, "Enable")
+    field(VAL,  "0")
+}
+
+# ==================================================================
+# 2. 물리 엔진 (Physics Engine)
+# ==================================================================
+
+# 2-1. 실제 속도 계산 (Velocity Profiler)
+# 목표 위치와의 거리를 보고 속도를 결정하되, 관성을 적용함
+record(calc, "$(P)$(R)Vel:Act") {
+    field(DESC, "Calculated Soft Velocity")
+    field(SCAN, ".1 second")
+    
+    # 입력 링크
+    field(INPA, "$(P)$(R)SetPoint NPP") # 목표 위치
+    field(INPB, "$(P)$(R)Pos NPP")      # 현재 위치
+    field(INPC, "$(P)$(R)MaxVel NPP")   # 최대 속도
+    field(INPD, "$(P)$(R)Accel NPP")    # 가속 계수
+    field(INPE, "$(P)$(R)Vel:Act NPP")  # 이전 속도 (Self)
+    field(INPF, "$(P)$(R)Enable NPP")   # 활성화 여부
+    
+    # ---------------------------------------------------------
+    # 로직 설명:
+    # 1. Dist = (A - B) : 남은 거리
+    # 2. Cmd_Vel = Dist : P제어 (거리가 멀면 속도를 높임)
+    #    -> 여기서 거리가 줄어들면 Cmd_Vel도 줄어들어 자동 감속됨
+    # 3. Limit_Vel = MAX(-C, MIN(C, Cmd_Vel)) : 최대 속도로 제한
+    # 4. New_Vel = E + (Limit_Vel - E) * D : 관성 필터 적용 (핵심)
+    # ---------------------------------------------------------
+    
+    # Enable(F)이 0이면 속도 0, 아니면 계산
+    field(CALC, "F ? (E + (MAX(-C, MIN(C, (A-B))) - E) * D) : 0")
+    
+    field(EGU,  "mm/s")
+    field(PREC, "3")
+    
+    # 속도가 계산되면 위치를 업데이트하러 이동
+    field(FLNK, "$(P)$(R)Pos")
+}
+
+# 2-2. 위치 적분기 (Position Integrator)
+# 위치 = 이전위치 + (속도 * 시간)
+record(calc, "$(P)$(R)Pos") {
+    field(DESC, "Current Position")
+    # SCAN은 Passive (Vel:Act에 의해 0.1초마다 호출됨)
+    
+    field(INPA, "$(P)$(R)Pos NPP")      # 현재 위치
+    field(INPB, "$(P)$(R)Vel:Act NPP")  # 현재 속도 (위에서 계산됨)
+    
+    # 위치 += 속도 * 0.1초
+    field(CALC, "A + (B * 0.1)")
+    
+    field(EGU,  "mm")
+    field(PREC, "2")
+    field(FLNK, "$(P)$(R)DMOV")
+}
+
+# ==================================================================
+# 3. 상태 피드백 (Status)
+# ==================================================================
+
+# 3-1. 이동 완료 신호 (DMOV)
+# 속도가 거의 0에 가깝고, 목표와의 오차도 작을 때 'Done'
+record(calc, "$(P)$(R)DMOV") {
+    field(DESC, "Done Moving Status")
+    field(INPA, "$(P)$(R)Vel:Act NPP")  # 현재 속도
+    field(INPB, "$(P)$(R)Pos NPP")      # 현재 위치
+    field(INPC, "$(P)$(R)SetPoint NPP") # 목표 위치
+    
+    # 조건: 속도(A)가 0.01 미만이고, 위치오차(B-C)가 0.1 미만일 때
+    field(CALC, "(ABS(A)<0.01) && (ABS(B-C)<0.1)")
+    
+    # 0이면 Moving, 1이면 Done
+}

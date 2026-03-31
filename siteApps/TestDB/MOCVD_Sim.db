@@ -1,0 +1,159 @@
+# ------------------------------------------------------------------
+# EPICS MOCVD Gas Ratio Control System
+# Logic: Ratio based Flow Distribution & Fail-Safe
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 설정 (Recipe Parameters)
+# ==================================================================
+
+# 1-1. 전체 유량 설정 (Total Flow)
+# 공정의 속도(Deposition Rate)를 결정
+record(ao, "$(P)$(R)TotalFlow") {
+    field(DESC, "Total Gas Flow (A+B)")
+    field(EGU,  "sccm")
+    field(VAL,  "100.0")
+    field(DRVL, "0")
+    field(DRVH, "1000")
+    field(PINI, "YES")
+}
+
+# 1-2. 혼합 비율 설정 (Ratio A:B)
+# 예: 3.0 설정 시 -> A:B = 3:1 (A가 B의 3배)
+# 공정의 화학적 조성(Stoichiometry)을 결정
+record(ao, "$(P)$(R)Ratio") {
+    field(DESC, "Ratio A:B (Val:1)")
+    field(VAL,  "1.0")
+    field(DRVL, "0.1") # 최소 1:10
+    field(DRVH, "10.0") # 최대 10:1
+    field(PREC, "2")
+    field(PINI, "YES")
+}
+
+# 1-3. 운전 시작 (Master Run)
+record(bo, "$(P)$(R)Run") {
+    field(DESC, "Process Run")
+    field(ZNAM, "Stop")
+    field(ONAM, "Injection")
+    field(VAL,  "0")
+}
+
+# 1-4. 고장 시뮬레이션 (Fault Trig)
+# 가스 A 공급 중단 상황 연출용 스위치
+record(bo, "$(P)$(R)Fault:GasA") {
+    field(DESC, "Simulate Gas A Empty")
+    field(ZNAM, "Normal")
+    field(ONAM, "Empty")
+    field(VAL,  "0")
+}
+
+# ==================================================================
+# 2. 비율 제어 엔진 (Calculation Logic)
+# ==================================================================
+
+# 2-1. MFC A 설정값 계산
+# 공식: SP_A = Total * (Ratio / (Ratio + 1))
+record(calc, "$(P)$(R)Calc:SP_A") {
+    field(DESC, "Calculate SP for MFC A")
+    field(SCAN, ".1 second")
+    
+    # 입력 링크
+    field(INPA, "$(P)$(R)TotalFlow NPP")
+    field(INPB, "$(P)$(R)Ratio NPP")
+    field(INPC, "$(P)$(R)Run NPP")
+    field(INPD, "$(P)$(R)Interlock NPP") # 인터락 상태 (1=OK, 0=Trip)
+    
+    # 로직: 
+    # Run(C)이 1이고, 인터락(D)이 1(OK)일 때만 계산
+    # A * (B / (B + 1))
+    field(CALC, "(C && D) ? (A * (B / (B + 1))) : 0")
+    
+    field(EGU,  "sccm")
+    field(PREC, "2")
+}
+
+# 2-2. MFC B 설정값 계산
+# 공식: SP_B = Total * (1 / (Ratio + 1))
+record(calc, "$(P)$(R)Calc:SP_B") {
+    field(DESC, "Calculate SP for MFC B")
+    field(SCAN, ".1 second")
+    
+    field(INPA, "$(P)$(R)TotalFlow NPP")
+    field(INPB, "$(P)$(R)Ratio NPP")
+    field(INPC, "$(P)$(R)Run NPP")
+    field(INPD, "$(P)$(R)Interlock NPP")
+    
+    # A * (1 / (B + 1))
+    field(CALC, "(C && D) ? (A * (1 / (B + 1))) : 0")
+    
+    field(EGU,  "sccm")
+    field(PREC, "2")
+}
+
+# ==================================================================
+# 3. MFC 시뮬레이션 (Process Simulation)
+# ==================================================================
+
+# 3-1. MFC A 실제 유량 (가상)
+# 정상 시 SP를 따라감. Fault 스위치가 켜지면 0이 됨.
+record(calc, "$(P)$(R)Flow:A") {
+    field(DESC, "Actual Flow A")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Calc:SP_A NPP") # 목표값
+    field(INPB, "$(P)$(R)Flow:A NPP")    # 현재값 (반응속도 구현용)
+    field(INPC, "$(P)$(R)Fault:GasA NPP") # 고장 스위치
+    
+    # 고장(C=1)이면 0. 아니면 목표값(A)을 부드럽게(0.5배) 따라감
+    field(CALC, "C ? 0 : (0.5*A + 0.5*B)")
+    field(EGU,  "sccm")
+    field(PREC, "2")
+}
+
+# 3-2. MFC B 실제 유량 (가상)
+record(calc, "$(P)$(R)Flow:B") {
+    field(DESC, "Actual Flow B")
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Calc:SP_B NPP")
+    field(INPB, "$(P)$(R)Flow:B NPP")
+    
+    # 정상 동작 시뮬레이션
+    field(CALC, "0.5*A + 0.5*B")
+    field(EGU,  "sccm")
+    field(PREC, "2")
+}
+
+# ==================================================================
+# 4. 인터락 모니터 (Safety Interlock)
+# ==================================================================
+
+# 4-1. 유량 감시 및 인터락 발동
+# Run 중인데 실제 유량이 SP와 너무 차이나면(공급불량) Trip 시킴
+record(calc, "$(P)$(R)Interlock") {
+    field(DESC, "Process Safety Monitor")
+    field(SCAN, ".2 second")
+    
+    field(INPA, "$(P)$(R)Calc:SP_A NPP") # 목표 A
+    field(INPB, "$(P)$(R)Flow:A NPP")    # 실제 A
+    field(INPC, "$(P)$(R)Run NPP")       # 운전 상태
+    field(INPD, "$(P)$(R)Interlock NPP") # 자기 상태 (Latch용)
+    
+    # 로직 설명:
+    # 1. 운전 중이 아님(C=0) -> 항상 1 (OK, Reset 상태)
+    # 2. 운전 중임(C=1):
+    #    - 목표 유량이 있는데(A>1), 실제 유량이 거의 없으면(B<0.5) -> 0 (Trip Fault)
+    #    - 그 외에는 -> 1 (OK)
+    # 3. 한번 Trip(0) 되면 Run을 끄기 전까지 0 유지 (Latch)를 위해 D 사용 가능하나,
+    #    여기서는 단순화를 위해 실시각 감시 로직만 적용
+    
+    field(CALC, "C ? ((A>1 && B<0.1) ? 0 : 1) : 1")
+    
+    # 인터락 상태(0/1)는 다시 Calc:SP_A, Calc:SP_B로 피드백되어
+    # 0(Trip)이 되는 순간 모든 SP를 0으로 차단함.
+}
+
+# 4-2. 인터락 상태 표시 (LED용)
+record(calc, "$(P)$(R)Sts:Trip") {
+    field(INPA, "$(P)$(R)Interlock CP")
+    field(CALC, "!A") # 1이면 Normal(0), 0이면 Trip(1)
+}

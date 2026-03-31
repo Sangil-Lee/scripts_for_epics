@@ -1,0 +1,137 @@
+# ------------------------------------------------------------------
+# EPICS Water Tank Simulator (PID logic using CALC records)
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 사용자 설정 및 센서 (User & Sensor)
+# ==================================================================
+
+# 목표 수위 (SetPoint)
+record(ao, "$(P)$(R)SetPoint") {
+    field(DESC, "Target Level")
+    field(VAL,  "50.0")
+    field(DRVL, "0")
+    field(DRVH, "100")
+    field(EGU,  "cm")
+    field(PINI, "YES")
+}
+
+# 배수량 (외란)
+record(ao, "$(P)$(R)Outflow") {
+    field(DESC, "Disturbance (Leak)")
+    field(VAL,  "0.0")
+    field(DRVL, "0")
+    field(DRVH, "50")
+    field(PINI, "YES")
+}
+
+# 모드 설정 (0:Manual, 1:Auto)
+record(bo, "$(P)$(R)Mode") {
+    field(DESC, "0=Man, 1=Auto")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto")
+    field(VAL,  "0")
+    # 모드가 바뀌면 I-Term을 리셋하기 위해 처리
+    field(FLNK, "$(P)$(R)PID:I_Term")
+}
+
+# 수동 밸브 입력
+record(ao, "$(P)$(R)Valve:Man") {
+    field(DESC, "Manual Valve Set")
+    field(VAL,  "0")
+    field(DRVL, "0")
+    field(DRVH, "100")
+}
+
+# ==================================================================
+# 2. PID 제어기 구현 (Calc Only)
+# ==================================================================
+
+# 2-1. PID 게인 설정 (Gain Settings)
+record(ao, "$(P)$(R)PID:KP") {
+    field(DESC, "Proportional Gain")
+    field(VAL,  "2.0")
+}
+
+record(ao, "$(P)$(R)PID:KI") {
+    field(DESC, "Integral Gain")
+    field(VAL,  "0.5")
+}
+
+# 2-2. 에러 계산 (Error Calculation)
+# Error = SP - PV
+record(calc, "$(P)$(R)PID:Error") {
+    field(SCAN, "1 second")
+    field(INPA, "$(P)$(R)SetPoint NPP")
+    field(INPB, "$(P)$(R)Level NPP")
+    field(CALC, "A - B")
+    field(FLNK, "$(P)$(R)PID:I_Term")
+}
+
+# 2-3. 적분항 계산 (Integral Term Accumulator)
+# I = I_prev + (Error * KI * dt)
+# 단, Auto 모드가 아니면(C=0) 적분값을 0으로 리셋 (Windup 방지)
+record(calc, "$(P)$(R)PID:I_Term") {
+    field(DESC, "Integral Accumulator")
+    field(INPA, "$(P)$(R)PID:Error NPP") # 에러
+    field(INPB, "$(P)$(R)PID:KI NPP")    # I 게인
+    field(INPC, "$(P)$(R)Mode NPP")      # Auto 모드 확인
+    field(INPD, "$(P)$(R)PID:I_Term NPP") # 자기 자신의 이전 값
+    
+    # 로직: 
+    # 1. Mode(C)가 0이면 -> 0으로 리셋
+    # 2. Mode(C)가 1이면 -> 이전값(D) + (에러(A)*게인(B)*0.1초)
+    # 3. MAX/MIN으로 적분 누적 과다 방지 (Anti-windup: -20~120 제한)
+    field(CALC, "C ? MAX(-20, MIN(120, D + (A*B*0.1))) : 0")
+    
+    field(FLNK, "$(P)$(R)PID:Output")
+}
+
+# 2-4. 최종 출력 계산 (PID Sum)
+# Output = (Error * KP) + I_Term
+record(calc, "$(P)$(R)PID:Output") {
+    field(DESC, "Final PID Output")
+    field(INPA, "$(P)$(R)PID:Error NPP")
+    field(INPB, "$(P)$(R)PID:KP NPP")
+    field(INPC, "$(P)$(R)PID:I_Term NPP")
+    
+    # P항(A*B) + I항(C)
+    # 밸브 범위인 0~100으로 자름 (Clamping)
+    field(CALC, "MAX(0, MIN(100, (A*B) + C))")
+    
+    field(FLNK, "$(P)$(R)Valve:Act")
+}
+
+# ==================================================================
+# 3. 밸브 선택 및 물리 모델
+# ==================================================================
+
+# 3-1. 밸브 구동부 (Selector)
+# Manual 값과 PID 값 중 선택
+record(calc, "$(P)$(R)Valve:Act") {
+    field(DESC, "Actual Valve Position")
+    field(INPA, "$(P)$(R)Valve:Man NPP")
+    field(INPB, "$(P)$(R)PID:Output NPP")
+    field(INPC, "$(P)$(R)Mode NPP")
+    
+    # Auto(C=1)면 PID값(B), 아니면 Manual값(A)
+    field(CALC, "C ? B : A")
+    
+    # 물리 모델 계산 트리거
+    field(FLNK, "$(P)$(R)Level")
+}
+
+# 3-2. 수조 물리 모델 (Physics)
+# 수위 = 수위 + (유입 - 유출) * dt
+record(calc, "$(P)$(R)Level") {
+    field(DESC, "Water Level Simulation")
+    field(INPA, "$(P)$(R)Level NPP")      # 현재 수위
+    field(INPB, "$(P)$(R)Valve:Act NPP")  # 유입 밸브
+    field(INPC, "$(P)$(R)Outflow NPP")    # 유출량
+    
+    # 유입계수 0.05, 유출계수 0.05, 시간간격 0.1초 가정
+    # 계산된 밸브/유출량이 수위에 영향을 줌
+    field(CALC, "MAX(0, MIN(100, A + (B*0.05) - (C*0.05)))")
+    field(PREC, "2")
+}

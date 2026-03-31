@@ -1,0 +1,124 @@
+# ---------------------------------------------------------
+# 1. PID Parameters & Inputs
+# ---------------------------------------------------------
+
+# PID 활성화 스위치 (0: Manual, 1: Auto)
+record(bo, "$(P)PID:Enable") {
+    field(DESC, "PID On/Off")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto Loop")
+    field(VAL,  "0")
+    field(PINI, "YES")
+}
+
+# 목표 속도 (Setpoint) [rad/s]
+record(ao, "$(P)PID:SP") {
+    field(DESC, "Target Velocity")
+    field(VAL,  "0.0")
+    field(PREC, "3")
+}
+
+# PID Gains
+record(ao, "$(P)PID:Kp") { field(VAL, "0.5") field(PREC, "3") }
+record(ao, "$(P)PID:Ki") { field(VAL, "2.0") field(PREC, "3") }
+record(ao, "$(P)PID:Kd") { field(VAL, "0.01") field(PREC, "3") }
+
+# 이전 오차 저장용 (For D-term)
+record(ai, "$(P)PID:PrevErr") {
+    field(VAL,  "0.0")
+    field(PREC, "3")
+}
+
+# ---------------------------------------------------------
+# 2. PID Calculation Loop (10Hz)
+# ---------------------------------------------------------
+
+# [단계 1] 오차 계산 (Error = SP - PV)
+# PID Enable이 0이어도 이 부분은 계속 돌아가며 에러를 감시합니다.
+record(calc, "$(P)PID:Error") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)PID:SP")       # Setpoint
+    field(INPB, "$(P)Sim:Vel")      # Process Value
+    field(CALC, "A-B")
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:Integ")
+}
+
+# [단계 2] 적분항 계산 (Integrator)
+# Enable이 0(Manual)이면 적분값을 0으로 리셋합니다 (Anti-windup/Reset).
+record(calc, "$(P)PID:Integ") {
+    field(INPA, "$(P)PID:Integ.VAL") # I_old
+    field(INPB, "$(P)PID:Error")     # Error
+    field(INPC, "$(P)PID:Ki")        # Ki
+    field(INPD, "$(P)Param:Dt")      # dt (0.1)
+    field(INPE, "$(P)PID:Enable")    # Enable Switch
+
+    # 식: Enable(E)이 0이면 0, 아니면 적분 누적 (Limit +/- 24V)
+    field(CALC, "E=0?0 : (MIN(MAX(A + B*C*D, -24.0), 24.0))")
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:Deriv")
+}
+
+# [단계 3] 미분항 계산 (Derivative)
+record(calc, "$(P)PID:Deriv") {
+    field(INPA, "$(P)PID:Error")     # Current Error
+    field(INPB, "$(P)PID:PrevErr")   # Previous Error
+    field(INPC, "$(P)PID:Kd")        # Kd
+    field(INPD, "$(P)Param:Dt")      # dt
+    
+    # 식: Kd * (Err - PrevErr) / dt
+    field(CALC, "(A-B)/D * C")
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:Output")
+}
+
+# [단계 4] 최종 출력 (Total Output) -> calcout 사용!
+# 중요: Enable이 0이면 이 레코드는 처리되지 않음(Disable) -> Manual 제어 가능
+record(calcout, "$(P)PID:Output") {
+    # Inputs
+    field(INPA, "$(P)PID:Error")     # Error
+    field(INPB, "$(P)PID:Kp")        # Kp
+    field(INPC, "$(P)PID:Integ")     # I-term
+    field(INPD, "$(P)PID:Deriv")     # D-term
+    
+    # Calculation: Output = Kp*E + I + D
+    field(CALC, "MIN(MAX((A*B + C + D), -24.0), 24.0)")
+    
+    # Output Link (값을 쓸 대상)
+    field(OUT,  "$(P)In:Volt PP")
+    
+    # [핵심 수정 사항 1] 매번 실행될 때마다 무조건 Output 실행
+    field(OOPT, "Every Time")
+    field(DOPT, "Use CALC")
+    
+    # [핵심 수정 사항 2] Manual Mode(Enable=0)일 때 이 레코드 실행 중지 (Write 방지)
+    # SDIS(Scan Disable Input)가 0이면 Disable 되도록 설정
+    # (일반적으로 SDIS 값이 1일 때 Disable이므로, DISV(Disable Value)를 0으로 설정)
+    field(SDIS, "$(P)PID:Enable")
+    field(DISV, "0")
+
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:StoreErr")
+}
+
+# [단계 5] 다음 루프를 위해 현재 오차 저장
+# Output 레코드가 실행될 때만 실행됨 (Auto 모드일 때만 업데이트)
+record(calc, "$(P)PID:StoreErr") {
+    field(INPA, "$(P)PID:Error")
+    field(CALC, "A")
+    # 값을 쓸 때는 OUT 필드가 없으므로, 대상 레코드(PID:PrevErr)가 Passive라면
+    # 여기서는 그냥 FLNK를 쓰거나, 별도의 calcout을 써야 함.
+    # 하지만 ai 레코드(PrevErr)는 값을 저장하는 용도이므로,
+    # 여기서는 'calcout'으로 변경하여 확실하게 값을 밀어넣겠습니다.
+}
+
+# StoreErr도 calcout으로 변경하여 확실하게 PrevErr에 값을 씀
+record(calcout, "$(P)PID:StoreErrOut") {
+    field(INPA, "$(P)PID:Error")
+    field(CALC, "A")
+    field(OUT,  "$(P)PID:PrevErr PP")
+    field(OOPT, "Every Time")
+}
+
+# 위 PID:Output의 FLNK를 수정해야 합니다.
+# PID:Output -> FLNK -> PID:StoreErrOut

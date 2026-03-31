@@ -1,0 +1,34 @@
+
+record(ai, "Test:Slider")
+{
+    field(VAL, "0")
+}
+
+record(bi, "Test:Toggle")
+{
+    field(ZNAM, "Open")
+    field(ONAM, "Close")
+    field(VAL, "0")
+}
+
+record(longin, "Test:Combo")
+{
+    field(VAL, "0")
+}
+
+record(stringin, "Test:String")
+{
+    field(VAL, "")
+}
+
+# --- 쓰기 가능 Long String (HMI TextInput → IOC) ---
+record(lsi, "Test:LongString") {
+    field(DESC, "Long String Input Test")
+    field(SIZV, "512")
+    field(INP,  "")
+}
+
+record(longin, "Test:Byte")
+{
+    field(VAL, "0")
+}

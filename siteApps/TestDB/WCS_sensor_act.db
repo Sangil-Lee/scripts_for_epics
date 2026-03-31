@@ -1,0 +1,89 @@
+# ============================================================
+# 1. Sensors (Inputs) - Simulated Values come here
+# ============================================================
+record(ai, "WTS:RAW_TANK:LVL") {
+    field(DESC, "Raw Water Tank Level")
+    field(EGU, "%")
+    field(PREC, "1")
+    field(VAL, "50")  # Initial Value
+}
+
+record(ai, "WTS:RAW_TANK:TEMP") {
+    field(DESC, "Raw Water Temp")
+    field(EGU, "C")
+    field(PREC, "1")
+}
+
+record(ai, "WTS:RAW_TANK:PH") {
+    field(DESC, "Raw Water pH")
+    field(EGU, "pH")
+    field(PREC, "2")
+    field(VAL, "7.0")
+}
+
+record(ai, "WTS:RAW_TANK:TURB") {
+    field(DESC, "Raw Water Turbidity")
+    field(EGU, "NTU")
+    field(VAL, "100")
+}
+
+record(ai, "WTS:CLEAN_TANK:LVL") {
+    field(DESC, "Clean Water Tank Level")
+    field(EGU, "%")
+    field(PREC, "1")
+    field(VAL, "50")
+}
+
+record(ai, "WTS:FILTER:DP") {
+    field(DESC, "Filter Differential Pressure")
+    field(EGU, "kPa")
+    field(PREC, "2")
+    field(VAL, "10")
+}
+
+record(bi, "WTS:P1:FAULT") {
+    field(DESC, "Pump 1 Fault Status")
+    field(ZNAM, "Normal")
+    field(ONAM, "Fault")
+}
+
+record(bi, "WTS:P2:FAULT") {
+    field(DESC, "Pump 2 Fault Status")
+    field(ZNAM, "Normal")
+    field(ONAM, "Fault")
+}
+
+# ============================================================
+# 2. Actuators (Outputs) - Control Commands
+# ============================================================
+# System Run/Stop Command
+record(bo, "WTS:SYS:STATUS") {
+    field(DESC, "System Status (Start/Stop)")
+    field(ZNAM, "STOP")
+    field(ONAM, "RUN")
+    field(FLNK, "WTS:CTRL:MAIN_LOGIC") # Logic triggers when status changes
+}
+
+# Valve Commands
+record(bo, "WTS:V1:CMD") { field(DESC, "Inlet Valve") }
+record(bo, "WTS:V2:CMD") { field(DESC, "Outlet Valve") }
+record(bo, "WTS:FILTER:BACKWASH") { field(DESC, "Backwash Valve") }
+
+# Pump & Mixer Commands
+record(bo, "WTS:P1:CMD") { field(DESC, "Pump 1 Command") }
+record(bo, "WTS:P2:CMD") { field(DESC, "Pump 2 Command") }
+record(bo, "WTS:MIX:CMD") { field(DESC, "Mixer Command") }
+
+# Setpoints
+record(ao, "WTS:P1:SPEED_SP") {
+    field(DESC, "Pump 1 Speed SP")
+    field(EGU, "%")
+}
+record(ao, "WTS:P2:SPEED_SP") {
+    field(DESC, "Pump 2 Speed SP")
+    field(EGU, "%")
+}
+record(ao, "WTS:CHEM:DOSE_SP") {
+    field(DESC, "Chemical Dosing SP")
+    field(EGU, "mL/min")
+}

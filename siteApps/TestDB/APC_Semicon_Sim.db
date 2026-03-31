@@ -1,0 +1,130 @@
+# ------------------------------------------------------------------
+# EPICS APC (Auto Pressure Control) - Stabilized Version
+# Macro: $(P) = Prefix, $(R) = Device Name
+# ------------------------------------------------------------------
+
+# ==================================================================
+# 1. 공정 변수 설정
+# ==================================================================
+
+record(ao, "$(P)$(R)Target") {
+    field(DESC, "Target Pressure")
+    field(EGU,  "Torr")
+    field(VAL,  "20.0")
+    field(PINI, "YES")
+}
+
+record(ao, "$(P)$(R)Inflow") {
+    field(DESC, "Gas Inflow Rate")
+    field(EGU,  "sccm")
+    field(VAL,  "100.0")
+    field(PINI, "YES")
+}
+
+record(bo, "$(P)$(R)Mode") {
+    field(DESC, "APC Mode")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto")
+    field(VAL,  "0")
+    field(FLNK, "$(P)$(R)PID:I_Term")
+}
+
+record(ao, "$(P)$(R)Valve:Man") {
+    field(DESC, "Manual Valve Pos")
+    field(EGU,  "%")
+    field(DRVL, "0")
+    field(DRVH, "100")
+    field(VAL,  "50.0")
+}
+
+# ==================================================================
+# 2. PID 파라미터 (튜닝용 레코드 추가)
+# ==================================================================
+
+# 비례 게인 (Proportional Gain)
+# 값을 낮춰서(0.1) 밸브가 미친듯이 반응하는 것을 막음
+record(ao, "$(P)$(R)PID:KP") {
+    field(DESC, "P Gain")
+    field(VAL,  "0.1")  # 기존 2.0 -> 0.1로 대폭 감소
+    field(PREC, "3")
+}
+
+# 적분 게인 (Integral Gain)
+# 값을 낮춰서(0.05) 오버슈트를 줄임
+record(ao, "$(P)$(R)PID:KI") {
+    field(DESC, "I Gain")
+    field(VAL,  "0.05") # 기존 0.5 -> 0.05로 대폭 감소
+    field(PREC, "3")
+}
+
+# ==================================================================
+# 3. APC 제어기 (Inverse PID Controller)
+# ==================================================================
+
+# 3-1. 에러 계산
+record(calc, "$(P)$(R)PID:Error") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)$(R)Target NPP")
+    field(INPB, "$(P)$(R)Pressure NPP")
+    field(CALC, "A - B")
+    field(FLNK, "$(P)$(R)PID:I_Term")
+}
+
+# 3-2. 적분항 (Inverse Integrator)
+# I = I_prev - (Error * Ki * dt)
+record(calc, "$(P)$(R)PID:I_Term") {
+    field(DESC, "Inverse Integrator")
+    
+    # 입력
+    field(INPA, "$(P)$(R)PID:Error NPP") # 에러
+    field(INPB, "$(P)$(R)Mode NPP")      # 모드
+    field(INPC, "$(P)$(R)PID:I_Term NPP") # 이전 적분값
+    field(INPD, "$(P)$(R)Valve:Man NPP") # 매뉴얼 값 (Bumpless용)
+    field(INPE, "$(P)$(R)PID:KI NPP")    # [New] I 게인 참조
+    
+    # 로직: 
+    # Auto(B=1)이면 -> 이전값(C) - (Error(A) * Ki(E) * 0.1초)
+    # Manual(B=0)이면 -> 현재 수동값(D) 추종
+    field(CALC, "B ? MAX(0, MIN(100, C - (A * E * 0.1))) : D")
+    
+    field(FLNK, "$(P)$(R)PID:Output")
+}
+
+# 3-3. 최종 출력 (P + I)
+# Output = I_Term - (Error * Kp)
+record(calc, "$(P)$(R)PID:Output") {
+    field(DESC, "Final Valve Command")
+    field(INPA, "$(P)$(R)PID:Error NPP")
+    field(INPB, "$(P)$(R)PID:I_Term NPP")
+    field(INPC, "$(P)$(R)PID:KP NPP")    # [New] P 게인 참조
+    
+    # Output = I항(B) - (Error(A) * Kp(C))
+    field(CALC, "MAX(0, MIN(100, B - (A * C)))")
+    
+    field(FLNK, "$(P)$(R)Valve:Act")
+}
+
+# ==================================================================
+# 4. 물리 모델
+# ==================================================================
+
+record(calc, "$(P)$(R)Valve:Act") {
+    field(DESC, "Actual Valve Position")
+    field(INPA, "$(P)$(R)Valve:Man NPP")
+    field(INPB, "$(P)$(R)PID:Output NPP")
+    field(INPC, "$(P)$(R)Mode NPP")
+    field(CALC, "C ? B : A")
+    field(EGU,  "%")
+    field(PREC, "1")
+    field(FLNK, "$(P)$(R)Pressure")
+}
+
+record(calc, "$(P)$(R)Pressure") {
+    field(DESC, "Chamber Pressure Model")
+    field(INPA, "$(P)$(R)Inflow NPP")
+    field(INPB, "$(P)$(R)Valve:Act NPP")
+    # P = (Inflow * 5) / (Valve + 2)
+    field(CALC, "(A * 5.0) / (B + 2.0)")
+    field(EGU,  "Torr")
+    field(PREC, "2")
+}

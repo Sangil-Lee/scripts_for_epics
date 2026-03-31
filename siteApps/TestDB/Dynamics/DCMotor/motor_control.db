@@ -1,0 +1,169 @@
+# ============================================================
+# EPICS Database: Robust DC Motor Control
+# ============================================================
+
+# ------------------------------------------------------------
+# 1. System Parameters & Inputs
+# ------------------------------------------------------------
+record(ao, "$(P)Param:R")  { field(VAL, "1.0") field(PINI, "YES") }
+record(ao, "$(P)Param:L")  { field(VAL, "0.5") field(PINI, "YES") }
+record(ao, "$(P)Param:Ke") { field(VAL, "0.1") field(PINI, "YES") }
+record(ao, "$(P)Param:Kt") { field(VAL, "0.1") field(PINI, "YES") }
+record(ao, "$(P)Param:J")  { field(VAL, "0.2") field(PINI, "YES") }
+record(ao, "$(P)Param:B")  { field(VAL, "0.1") field(PINI, "YES") }
+record(ao, "$(P)Param:Dt") { field(VAL, "0.1") field(PINI, "YES") }
+
+# Control Inputs
+record(ao, "$(P)In:Volt") {
+    field(DESC, "Motor Input Voltage")
+    field(VAL,  "0.0")
+    field(DRVL, "-24.0")
+    field(DRVH, "24.0")
+    field(PREC, "2")
+}
+record(ao, "$(P)In:Load") {
+    field(DESC, "Disturbance Load")
+    field(VAL,  "0.0")
+}
+record(bo, "$(P)Cmd:Reset") {
+    field(ZNAM, "Run")
+    field(ONAM, "Reset")
+    field(VAL,  "0")
+}
+
+# ------------------------------------------------------------
+# 2. Physics Engine (Motor Simulation)
+# ------------------------------------------------------------
+record(calc, "$(P)Sim:Curr") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)Sim:Curr.VAL")
+    field(INPB, "$(P)In:Volt")
+    field(INPC, "$(P)Sim:Vel")
+    field(INPD, "$(P)Param:R")
+    field(INPE, "$(P)Param:L")
+    field(INPF, "$(P)Param:Ke")
+    field(INPG, "$(P)Param:Dt")
+    field(INPH, "$(P)Cmd:Reset")
+    field(CALC, "H?0:(A + G * ((B - D*A - F*C)/E))")
+    field(PREC, "3")
+    field(FLNK, "$(P)Sim:Vel")
+}
+
+record(calc, "$(P)Sim:Vel") {
+    field(INPA, "$(P)Sim:Vel.VAL")
+    field(INPB, "$(P)Sim:Curr")
+    field(INPC, "$(P)Param:Kt")
+    field(INPD, "$(P)Param:B")
+    field(INPE, "$(P)Param:J")
+    field(INPF, "$(P)In:Load")
+    field(INPG, "$(P)Param:Dt")
+    field(INPH, "$(P)Cmd:Reset")
+    field(CALC, "H?0:(A + G * ((C*B - D*A - F)/E))")
+    field(PREC, "3")
+    field(FLNK, "$(P)Sim:Pos")
+}
+
+record(calc, "$(P)Sim:Pos") {
+    field(INPA, "$(P)Sim:Pos.VAL")
+    field(INPB, "$(P)Sim:Vel")
+    field(INPC, "$(P)Param:Dt")
+    field(INPD, "$(P)Cmd:Reset")
+    field(CALC, "D?0:(A + B*C)")
+    field(PREC, "3")
+}
+
+# ------------------------------------------------------------
+# 3. PID Controller (Improved Logic)
+# ------------------------------------------------------------
+
+# [PID Enable Switch]
+# Manual(0) -> PID output stops writing, Slider works.
+# Auto(1)   -> PID writes to In:Volt.
+record(bo, "$(P)PID:Enable") {
+    field(DESC, "PID On/Off Switch")
+    field(ZNAM, "Manual")
+    field(ONAM, "Auto Loop")
+    field(VAL,  "1")
+    field(PINI, "YES")
+}
+
+record(ao, "$(P)PID:SP") { field(VAL,"0.0") field(PREC,"3") }
+record(ao, "$(P)PID:Kp") { field(VAL,"0.5") field(PREC,"3") }
+record(ao, "$(P)PID:Ki") { field(VAL,"2.0") field(PREC,"3") }
+record(ao, "$(P)PID:Kd") { field(VAL,"0.01") field(PREC,"3") }
+record(ai, "$(P)PID:PrevErr") { field(VAL,"0.0") field(PREC,"3") }
+
+# [Step 1] Error Calculation (Runs every 0.1s)
+record(calc, "$(P)PID:Error") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)PID:SP")
+    field(INPB, "$(P)Sim:Vel")
+    field(CALC, "A-B")
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:Integ")
+}
+
+# [Step 2] Integral Calculation
+# If Enable=0, Reset Integral to 0 to prevent windup.
+record(calc, "$(P)PID:Integ") {
+    field(INPA, "$(P)PID:Integ.VAL")
+    field(INPB, "$(P)PID:Error")
+    field(INPC, "$(P)PID:Ki")
+    field(INPD, "$(P)Param:Dt")
+    field(INPE, "$(P)PID:Enable")
+    # Logic: If Enable(E) is 0, Return 0. Else Accumulate.
+    field(CALC, "E=0?0:(MIN(MAX(A + B*C*D, -24.0), 24.0))")
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:Deriv")
+}
+
+# [Step 3] Derivative Calculation
+record(calc, "$(P)PID:Deriv") {
+    field(INPA, "$(P)PID:Error")
+    field(INPB, "$(P)PID:PrevErr")
+    field(INPC, "$(P)PID:Kd")
+    field(INPD, "$(P)Param:Dt")
+    field(CALC, "(A-B)/D * C")
+    field(PREC, "3")
+    field(FLNK, "$(P)PID:Total")
+}
+
+# [Step 4] Total PID Sum Calculation
+# This record ALWAYS runs, so we can monitor what the PID *wants* to do.
+record(calc, "$(P)PID:Total") {
+    field(INPA, "$(P)PID:Error")
+    field(INPB, "$(P)PID:Kp")
+    field(INPC, "$(P)PID:Integ")
+    field(INPD, "$(P)PID:Deriv")
+    field(CALC, "MIN(MAX((A*B + C + D), -24.0), 24.0)")
+    field(PREC, "3")
+    # Next, go to StoreErr (Always Update State!)
+    field(FLNK, "$(P)PID:StoreErr")
+}
+
+# [Step 5] Store Previous Error (State Update)
+# Using calcout to ensure writing to AI record
+record(calcout, "$(P)PID:StoreErr") {
+    field(INPA, "$(P)PID:Error")
+    field(CALC, "A")
+    field(OUT,  "$(P)PID:PrevErr PP")
+    field(OOPT, "Every Time")
+    # Next, try to write to Motor
+    field(FLNK, "$(P)PID:WriteGate")
+}
+
+# [Step 6] Write Gate (The Switch)
+# Only this record is disabled when Enable=0.
+# Because it's at the END of the chain, disabling it doesn't break anything else.
+record(calcout, "$(P)PID:WriteGate") {
+    field(INPA, "$(P)PID:Total")
+    field(CALC, "A")
+    field(OUT,  "$(P)In:Volt PP")
+    field(OOPT, "Every Time")
+    
+    # [Disable Logic]
+    # If PID:Enable is 0, this record is DISABLED.
+    # It will NOT write to In:Volt.
+    field(SDIS, "$(P)PID:Enable.VAL") 
+    field(DISV, "0")
+}

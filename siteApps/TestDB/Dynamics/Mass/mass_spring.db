@@ -1,0 +1,114 @@
+# Macro: P (Prefix, ex: "TEST:")
+
+# ---------------------------------------------------------
+# 1. System Parameters (상수 설정)
+# ---------------------------------------------------------
+
+# 질량 (Mass, m) [kg] - 0이 되면 안됨
+record(ao, "$(P)Sim:Mass") {
+    field(DESC, "Mass (kg)")
+    field(VAL,  "1.0")
+    field(PREC, "2")
+    field(DRVL, "0.1") 
+    field(PINI, "YES")
+}
+
+# 스프링 상수 (Spring Constant, k) [N/m]
+record(ao, "$(P)Sim:K") {
+    field(DESC, "Spring Constant (N/m)")
+    field(VAL,  "5.0")
+    field(PREC, "2")
+    field(PINI, "YES")
+}
+
+# 댐핑 계수 (Damping Coefficient, c) [N*s/m]
+record(ao, "$(P)Sim:C") {
+    field(DESC, "Damping Coeff (Ns/m)")
+    field(VAL,  "0.5")
+    field(PREC, "2")
+    field(PINI, "YES")
+}
+
+# 시간 간격 (Delta t) [sec] - SCAN rate와 맞춰야 함 (.1 second scan)
+record(ao, "$(P)Sim:Dt") {
+    field(DESC, "Time Step (s)")
+    field(VAL,  "0.1")
+    field(PREC, "3")
+    field(PINI, "YES")
+}
+
+# ---------------------------------------------------------
+# 2. Inputs & Controls (입력 및 제어)
+# ---------------------------------------------------------
+
+# 외력 (External Force, F) [N]
+record(ao, "$(P)Sim:Force") {
+    field(DESC, "External Force (N)")
+    field(VAL,  "0.0")
+    field(PREC, "2")
+}
+
+# 시뮬레이션 초기화 (Reset)
+record(bo, "$(P)Sim:Reset") {
+    field(DESC, "Reset Position/Velocity")
+    field(ZNAM, "Run")
+    field(ONAM, "Reset")
+    field(VAL,  "0")
+}
+
+# ---------------------------------------------------------
+# 3. Physics Calculation Loop (물리 엔진)
+# 실행 순서: Accel -> Velocity -> Position
+# ---------------------------------------------------------
+
+# [단계 1] 가속도 계산: a = (F - cv - kx) / m
+record(calc, "$(P)Sim:Accel") {
+    field(DESC, "Acceleration")
+    field(SCAN, ".1 second")  # 시뮬레이션 주기
+    # Inputs
+    field(INPA, "$(P)Sim:Force")   # F
+    field(INPB, "$(P)Sim:Vel")     # v (이전 값)
+    field(INPC, "$(P)Sim:Pos")     # x (이전 값)
+    field(INPD, "$(P)Sim:Mass")    # m
+    field(INPE, "$(P)Sim:C")       # c
+    field(INPF, "$(P)Sim:K")       # k
+    
+    # Calculation: (A - E*B - F*C) / D
+    # Mass(D)가 0일 경우 오류 방지를 위해 max(D, 0.01) 처리 가능하나 여기선 생략
+    field(CALC, "(A - E*B - F*C) / D")
+    field(PREC, "3")
+    
+    # 다음 단계로 Forward Link
+    field(FLNK, "$(P)Sim:Vel")
+}
+
+# [단계 2] 속도 적분: v_new = v_old + a * dt
+record(calc, "$(P)Sim:Vel") {
+    field(DESC, "Velocity")
+    # Inputs
+    field(INPA, "$(P)Sim:Vel.VAL") # v_old (Self)
+    field(INPB, "$(P)Sim:Accel")   # a
+    field(INPC, "$(P)Sim:Dt")      # dt
+    field(INPD, "$(P)Sim:Reset")   # Reset Flag
+
+    # Calculation: Reset(D)이 1이면 0, 아니면 적분
+    field(CALC, "D?0:(A + B*C)")
+    field(PREC, "3")
+    
+    # 다음 단계로 Forward Link
+    field(FLNK, "$(P)Sim:Pos")
+}
+
+# [단계 3] 위치 적분: x_new = x_old + v * dt
+record(calc, "$(P)Sim:Pos") {
+    field(DESC, "Position")
+    # Inputs
+    field(INPA, "$(P)Sim:Pos.VAL") # x_old (Self)
+    field(INPB, "$(P)Sim:Vel")     # v (현재 값)
+    field(INPC, "$(P)Sim:Dt")      # dt
+    field(INPD, "$(P)Sim:Reset")   # Reset Flag
+
+    # Calculation: Reset(D)이 1이면 0, 아니면 적분
+    field(CALC, "D?0:(A + B*C)")
+    field(PREC, "3")
+}

@@ -1,0 +1,126 @@
+# ---------------------------------------------------------
+# 1. System Parameters (모터 상수)
+# ---------------------------------------------------------
+
+# 전기자 저항 (Resistance, R) [Ohm]
+record(ao, "$(P)Param:R") {
+    field(VAL,  "1.0")
+    field(PINI, "YES")
+}
+
+# 인덕턴스 (Inductance, L) [Henry]
+# 시뮬레이션 안정성을 위해 0.5로 설정 (너무 작으면 발산함)
+record(ao, "$(P)Param:L") {
+    field(VAL,  "0.5")
+    field(PINI, "YES")
+}
+
+# 역기전력 상수 (Back-EMF Constant, Ke) [V/(rad/s)]
+record(ao, "$(P)Param:Ke") {
+    field(VAL,  "0.1")
+    field(PINI, "YES")
+}
+
+# 토크 상수 (Torque Constant, Kt) [Nm/A]
+record(ao, "$(P)Param:Kt") {
+    field(VAL,  "0.1")
+    field(PINI, "YES")
+}
+
+# 관성 모멘트 (Inertia, J) [kg*m^2]
+record(ao, "$(P)Param:J") {
+    field(VAL,  "0.2")
+    field(PINI, "YES")
+}
+
+# 마찰 계수 (Friction/Damping, B) [Nms]
+record(ao, "$(P)Param:B") {
+    field(VAL,  "0.1")
+    field(PINI, "YES")
+}
+
+# 시간 간격 (Delta t) [sec]
+record(ao, "$(P)Param:Dt") {
+    field(VAL,  "0.1")
+    field(PINI, "YES")
+}
+
+# ---------------------------------------------------------
+# 2. Inputs & Controls (입력)
+# ---------------------------------------------------------
+
+# 입력 전압 (Input Voltage, V) [Volt] - Main Control Output
+record(ao, "$(P)In:Volt") {
+    field(DESC, "Input Voltage")
+    field(VAL,  "0.0")
+    field(DRVL, "-24.0")
+    field(DRVH, "24.0")
+}
+
+# 부하 토크 (Load Torque, T_load) [Nm] - Disturbance
+record(ao, "$(P)In:Load") {
+    field(DESC, "Load Torque")
+    field(VAL,  "0.0")
+}
+
+# 리셋 (Reset)
+record(bo, "$(P)Cmd:Reset") {
+    field(ZNAM, "Run")
+    field(ONAM, "Reset")
+    field(VAL,  "0")
+}
+
+# ---------------------------------------------------------
+# 3. Physics Engine (계산 루프)
+# 실행 순서: Current -> Velocity -> Position
+# ---------------------------------------------------------
+
+# [단계 1] 전류 계산 (Electrical Loop)
+# i_new = i_old + dt * (V - R*i_old - Ke*w_old) / L
+record(calc, "$(P)Sim:Curr") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P)Sim:Curr.VAL")  # i_old (Self)
+    field(INPB, "$(P)In:Volt")       # V (Input)
+    field(INPC, "$(P)Sim:Vel")       # w_old (Back EMF source)
+    field(INPD, "$(P)Param:R")       # R
+    field(INPE, "$(P)Param:L")       # L
+    field(INPF, "$(P)Param:Ke")      # Ke
+    field(INPG, "$(P)Param:Dt")      # dt
+    field(INPH, "$(P)Cmd:Reset")     # Reset
+
+    # 수식: Reset(H)이면 0, 아니면 Euler 적분
+    # dI/dt = (V - R*i - Ke*w) / L
+    field(CALC, "H?0:(A + G * ((B - D*A - F*C)/E))")
+    field(PREC, "3")
+    field(FLNK, "$(P)Sim:Vel")
+}
+
+# [단계 2] 속도 계산 (Mechanical Loop)
+# w_new = w_old + dt * (Kt*i_new - B*w_old - Load) / J
+record(calc, "$(P)Sim:Vel") {
+    field(INPA, "$(P)Sim:Vel.VAL")   # w_old (Self)
+    field(INPB, "$(P)Sim:Curr")      # i_new (From Step 1)
+    field(INPC, "$(P)Param:Kt")      # Kt
+    field(INPD, "$(P)Param:B")       # B
+    field(INPE, "$(P)Param:J")       # J
+    field(INPF, "$(P)In:Load")       # Load Torque
+    field(INPG, "$(P)Param:Dt")      # dt
+    field(INPH, "$(P)Cmd:Reset")     # Reset
+
+    # 수식: dw/dt = (Kt*i - B*w - Load) / J
+    field(CALC, "H?0:(A + G * ((C*B - D*A - F)/E))")
+    field(PREC, "3")
+    field(FLNK, "$(P)Sim:Pos")
+}
+
+# [단계 3] 위치 계산 (Position Integration)
+# theta_new = theta_old + w_new * dt
+record(calc, "$(P)Sim:Pos") {
+    field(INPA, "$(P)Sim:Pos.VAL")   # theta_old (Self)
+    field(INPB, "$(P)Sim:Vel")       # w_new
+    field(INPC, "$(P)Param:Dt")      # dt
+    field(INPD, "$(P)Cmd:Reset")     # Reset
+
+    field(CALC, "D?0:(A + B*C)")
+    field(PREC, "3")
+}

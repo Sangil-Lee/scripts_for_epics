@@ -1,0 +1,157 @@
+# ============================================================
+# Mixing Tank Simulator (Base Records Only)
+# Physics:
+#   1. Level: Integral of (Flow_In - Flow_Out)
+#   2. Temp:  Heat Balance Equation
+# ============================================================
+# Macro: P = SIM:
+
+# ------------------------------------------------------------
+# 1. Inputs & Disturbances
+# ------------------------------------------------------------
+
+# 공급 온도 설정 (상수)
+record(ao, "$(P)Thot_Supply") { field(VAL, "80") field(PINI, "YES") } # 온수 80도
+record(ao, "$(P)Tcold_Supply"){ field(VAL, "10") field(PINI, "YES") } # 냉수 10도
+
+# 밸브 (Actuators)
+record(ao, "$(P)ValveHot")  { field(DRVL, "0") field(DRVH, "100") field(VAL, "0") }
+record(ao, "$(P)ValveCold") { field(DRVL, "0") field(DRVH, "100") field(VAL, "30") } # 외란
+record(ao, "$(P)ValveDrain"){ field(DRVL, "0") field(DRVH, "100") field(VAL, "30") }
+
+# ------------------------------------------------------------
+# 2. Physics Engine (Level & Temperature)
+# ------------------------------------------------------------
+
+# [Step 1] 유량 계산 (Flow = Valve * Coeff)
+# 편의상 Valve %가 곧 유량이라고 가정
+record(calc, "$(P)FlowHot") {
+    field(INPA, "$(P)ValveHot NPP")
+    field(CALC, "A")
+    field(SCAN, ".1 second")
+}
+record(calc, "$(P)FlowCold") {
+    field(INPA, "$(P)ValveCold NPP")
+    field(CALC, "A")
+    field(SCAN, ".1 second")
+}
+record(calc, "$(P)FlowOut") {
+    field(INPA, "$(P)Level NPP")
+    field(INPB, "$(P)ValveDrain NPP")
+    # Bernoulli: OutFlow proportional to Valve * sqrt(Level)
+    field(CALC, "B * SQRT(MAX(A, 0)) * 0.2")
+    field(SCAN, ".1 second")
+}
+
+# [Step 2] 수위 계산 (Mass Balance)
+# Level_new = Level_old + (Fin_Hot + Fin_Cold - Fout) * dt / Area
+record(calc, "$(P)CalcLevel") {
+    field(INPA, "$(P)CalcLevel.VAL NPP")
+    field(INPB, "$(P)FlowHot PP")
+    field(INPC, "$(P)FlowCold PP")
+    field(INPD, "$(P)FlowOut PP")
+    # dt=0.1, Area=constant
+    field(CALC, "MIN(100, MAX(0, A + (B + C - D) * 0.05))")
+    field(SCAN, ".1 second")
+    field(FLNK, "$(P)Level")
+}
+record(ai, "$(P)Level") {
+    field(INP, "$(P)CalcLevel NPP")
+    field(EGU, "%")
+    field(LOPR, "0") field(HOPR, "100")
+}
+
+# [Step 3] 온도 계산 (Energy Balance) - 핵심 물리 모델
+# T_new = T_old + (dt / Volume) * [ Q_h*(Th - T) + Q_c*(Tc - T) ]
+record(calc, "$(P)CalcTemp") {
+    field(INPA, "$(P)CalcTemp.VAL NPP")  # 현재 온도 (T)
+    field(INPB, "$(P)FlowHot NPP")       # Q_h
+    field(INPC, "$(P)FlowCold NPP")      # Q_c
+    field(INPD, "$(P)Level NPP")         # Volume (수위)
+    field(INPE, "$(P)Thot_Supply NPP")   # T_h
+    field(INPF, "$(P)Tcold_Supply NPP")  # T_c
+    
+    # 수위(D)가 너무 낮으면(5이하) 열용량이 작아 온도 변화가 극심하므로 최소값 5로 제한(나눗셈 방지)
+    # 공식: T + (0.1 / Vol) * ( Qh(Th-T) + Qc(Tc-T) )
+    field(CALC, "A + (0.1 / MAX(D, 5)) * ( B*(E-A) + C*(F-A) )")
+    
+    field(SCAN, ".1 second")
+    field(FLNK, "$(P)TankTemp")
+}
+record(ai, "$(P)TankTemp") {
+    field(INP, "$(P)CalcTemp NPP")
+    field(EGU, "degC")
+    field(LOPR, "0") field(HOPR, "100")
+    # 온도 계산이 끝나면 PID 계산 트리거
+    field(FLNK, "$(P)PID:Error")
+}
+
+# ------------------------------------------------------------
+# 3. Manual PID Controller (Target: Temperature, MV: HotValve)
+# ------------------------------------------------------------
+
+record(ao, "$(P)TempSP") {
+    field(DESC, "Temperature Setpoint")
+    field(VAL,  "40")
+    field(DRVL, "0") field(DRVH, "100")
+    field(OUT,  "$(P)PID:Error.PROC PP")
+}
+
+# Gains
+record(ao, "$(P)Kp") { field(VAL, "2.0") field(PREC,"2") }
+record(ao, "$(P)Ki") { field(VAL, "1.0") field(PREC,"2") }
+record(ao, "$(P)Kd") { field(VAL, "0.5") field(PREC,"2") }
+
+# 1. Error Calc
+record(calc, "$(P)PID:Error") {
+    field(INPA, "$(P)TempSP NPP")
+    field(INPB, "$(P)TankTemp NPP")
+    field(CALC, "A - B")
+    field(FLNK, "$(P)PID:Integ")
+}
+
+# 2. Integral (with Anti-windup)
+record(calc, "$(P)PID:Integ") {
+    field(INPA, "$(P)PID:Integ.VAL NPP")
+    field(INPB, "$(P)PID:Error NPP")
+    field(INPC, "0.1") # dt
+    # 적분 누적 제한 (-200 ~ 200)
+    field(CALC, "MAX(-200, MIN(200, A + (B * C)))")
+    field(FLNK, "$(P)PID:Deriv")
+}
+
+# 3. Derivative
+record(calc, "$(P)PID:Deriv") {
+    field(INPA, "$(P)PID:Error NPP")
+    field(INPB, "$(P)PID:PrevErr NPP")
+    field(INPC, "0.1") # dt
+    field(CALC, "(A - B) / C")
+    field(FLNK, "$(P)PID:Output")
+}
+
+# 4. Output Summation -> ValveHot
+record(calcout, "$(P)PID:Output") {
+    field(INPA, "$(P)PID:Error NPP")
+    field(INPB, "$(P)PID:Integ NPP")
+    field(INPC, "$(P)PID:Deriv NPP")
+    
+    field(INPD, "$(P)Kp NPP")
+    field(INPE, "$(P)Ki NPP")
+    field(INPF, "$(P)Kd NPP")
+    
+    # MV = Kp*E + Ki*I + Kd*D
+    field(CALC, "D*A + E*B + F*C")
+    
+    field(OOPT, "On Change")
+    field(DOPT, "Use CALC")
+    field(OCAL, "MAX(0, MIN(100, A))") # 0~100% Limit
+    field(OUT,  "$(P)ValveHot PP")
+    
+    field(FLNK, "$(P)PID:StorePrev")
+}
+
+# 5. Store Previous Error
+record(calc, "$(P)PID:StorePrev") {
+    field(INPA, "$(P)PID:Error NPP")
+    field(CALC, "A")
+}

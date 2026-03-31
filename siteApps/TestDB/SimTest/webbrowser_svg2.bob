@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>Display</name>
+  <widget type="webbrowser" version="2.0.0">
+    <name>Web Browser</name>
+    <url>http://localhost:8000/speedcontrol2.html</url>
+    <x>10</x>
+    <show_toolbar>false</show_toolbar>
+  </widget>
+</display>

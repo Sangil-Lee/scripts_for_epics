@@ -1,0 +1,110 @@
+# ------------------------------------------------------------------
+# EPICS Triangle Wave Generator
+# 매크로: $(P) = Prefix, $(R) = Region/Device name
+# ------------------------------------------------------------------
+
+# 1. 파형의 상한값 (High Limit)
+record(ao, "$(P)$(R)HighLim") {
+    field(DESC, "Upper Limit")
+    field(VAL,  "100")
+    field(PINI, "YES")
+}
+
+# 2. 파형의 하한값 (Low Limit)
+record(ao, "$(P)$(R)LowLim") {
+    field(DESC, "Lower Limit")
+    field(VAL,  "0")
+    field(PINI, "YES")
+}
+
+# 3. 증감 스텝 크기 (Step Size - 속도 결정)
+record(ao, "$(P)$(R)Step") {
+    field(DESC, "Step Size per Scan")
+    field(VAL,  "1")
+    field(PINI, "YES")
+}
+
+# 4. 실행 제어 (On/Off)
+record(bo, "$(P)$(R)Run") {
+    field(DESC, "Run Control")
+    field(ZNAM, "Stop")
+    field(ONAM, "Run")
+    field(VAL,  "0")
+}
+
+#
+record(ao, "$(P)$(R)Write1") {
+    field(DESC, "Write Test") 
+    field(VAL,  "1")
+    field(PINI, "YES")
+}
+
+record(ao, "$(P)$(R)Write2") {
+    field(DESC, "Write Test") 
+    field(VAL,  "1")
+    field(PINI, "YES")
+}
+
+record(mbbo, "$(P)$(R)Write3") {
+	field(VAL, "0")
+	field(ZRST, "0")
+	field(ONST, "1")
+	field(TWST, "2")
+	field(THST, "3")
+	field(FRST, "4")
+	field(FVST, "5")
+	field(SXST, "6 ")
+    field(PINI, "YES")
+}
+
+record(bo, "$(P)$(R)Switch") {
+    field(ZNAM, "Closed")
+    field(ONAM, "Open")
+    field(VAL,  "0")
+}
+
+
+# ------------------------------------------------------------------
+# 핵심 로직 (Core Logic)
+# ------------------------------------------------------------------
+
+# 5. 방향 결정 레코드 (Direction Logic)
+# A: 현재 값 (Triangle:Val)
+# B: 현재 방향 (Self) -> 1: Up, -1: Down
+# C: 상한값
+# D: 하한값
+record(calc, "$(P)$(R)Dir") {
+    field(DESC, "Direction: 1=Up, -1=Down")
+    field(INPA, "$(P)$(R)Val NPP")
+    field(INPB, "$(P)$(R)Dir NPP")
+    field(INPC, "$(P)$(R)HighLim NPP")
+    field(INPD, "$(P)$(R)LowLim NPP")
+    
+    # 로직: 
+    # 1. 초기 상태(B=0)이면 1(Up)로 설정
+    # 2. 현재 값이 상한(C)보다 크거나 같으면 -1(Down)
+    # 3. 현재 값이 하한(D)보다 작거나 같으면 1(Up)
+    # 4. 그 외에는 현재 방향(B) 유지
+    field(CALC, "B=0?1:((A>=C)?-1:((A<=D)?1:B))")
+}
+
+# 6. 삼각파 값 계산 레코드 (Value Calculation)
+# 이 레코드가 주기적으로 Scan되면서 파형을 만듭니다.
+# A: 현재 값 (Self)
+# B: 방향 (Triangle:Dir)
+# C: 스텝 크기
+# D: Run/Stop 상태
+record(calc, "$(P)$(R)Val") {
+    field(DESC, "Triangle Wave Output")
+    field(SCAN, "1 second")
+    field(INPA, "$(P)$(R)Val NPP")
+    field(INPB, "$(P)$(R)Dir PP")  # 처리 전 Dir을 먼저 가져옴 (혹은 FLNK 구조 사용 가능)
+    field(INPC, "$(P)$(R)Step NPP")
+    field(INPD, "$(P)$(R)Run NPP")
+    
+    # 로직: Run(D)이 1이면 (현재값 A + 방향 B * 스텝 C), 아니면 현재값 A 유지
+    field(CALC, "D?(A+(B*C)):A")
+    
+    # 계산 후, 방향을 다시 판단하기 위해 Dir 레코드를 강제로 처리(Process)
+    field(FLNK, "$(P)$(R)Dir")
+}
