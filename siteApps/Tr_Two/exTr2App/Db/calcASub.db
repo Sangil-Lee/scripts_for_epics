@@ -1,0 +1,57 @@
+# ----- 입력 파형 (초기화 소스) -----
+record(waveform, "$(P)InputWf") {
+    field(NELM, "1024")
+    field(FTVL, "DOUBLE")
+}
+
+# ----- 연산 제어 PV -----
+record(stringout, "$(P)OpName")    { field(VAL,  "INIT")  }
+record(longout,   "$(P)RangeStart"){ field(VAL,  "0")     }
+record(longout,   "$(P)RangeEnd")  { field(VAL,  "0")     }
+record(longout,   "$(P)Index")     { field(VAL,  "0")     }
+record(ao,        "$(P)Operand")   { field(VAL,  "0.0")   }
+record(ao,        "$(P)Param1")    { field(VAL,  "0.0")   }
+record(ao,        "$(P)Param2")    { field(VAL,  "0.0")   }
+
+# ----- aSub 레코드 -----
+record(aSub, "$(P)CalcWf") {
+    field(INAM, "calcWaveformInit")
+    field(SNAM, "calcWaveformProcess")
+    field(FTA,  "DOUBLE")
+    field(FTB,  "STRING")
+    field(FTC,  "LONG")
+    field(FTD,  "LONG")
+    field(FTE,  "DOUBLE")
+    field(FTF,  "DOUBLE")
+    field(FTG,  "DOUBLE")
+    field(FTH,  "LONG")
+    field(FTVA, "DOUBLE")
+    field(FTVB, "DOUBLE")
+    field(NOA,  "1024")
+    field(NOVA, "1024")
+    field(NOVB, "1024")
+    field(INPA, "$(P)InputWf CP")
+    field(INPB, "$(P)OpName NPP")
+    field(INPC, "$(P)RangeStart NPP")
+    field(INPD, "$(P)RangeEnd NPP")
+    field(INPE, "$(P)Operand NPP")
+    field(INPF, "$(P)Param1 NPP")
+    field(INPG, "$(P)Param2 NPP")
+    field(INPH, "$(P)Index NPP")
+    field(OUTA, "$(P)OutputWfA PP")
+    field(OUTB, "$(P)OutputWfB PP")
+}
+
+# ----- 출력 파형 A (결과 확인용) -----
+record(waveform, "$(P)OutputWfA") {
+    field(PINI, "YES")
+    field(NELM, "1024")
+    field(FTVL, "DOUBLE")
+}
+
+# ----- 출력 파형 B (결과 확인용) -----
+record(waveform, "$(P)OutputWfB") {
+    field(PINI, "YES")
+    field(NELM, "1024")
+    field(FTVL, "DOUBLE")
+}
