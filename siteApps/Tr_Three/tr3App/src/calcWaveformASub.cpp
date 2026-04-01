@@ -1,265 +1,242 @@
 /*
  * calcWaveformASub.cpp
  *
- * EPICS aSub record implementation for waveform slice operations.
- * Equivalent to calc_waveform_slice_pwm_init.py
+ * EPICS aSub record implementation for dual-output waveform slice operations.
  *
  * ============================================================================
  *  aSub Record Field Mapping
  * ============================================================================
- *   INPA  : Input waveform          (DOUBLE array, NOA)
- *   INPB  : Operation name          (STRING, e.g. "INIT","ADD","PWM","SINE")
- *   INPC  : Range start index       (LONG,   0-based, default 0)
- *   INPD  : Range end index         (LONG,   exclusive, <=0 means full length)
- *   INPE  : Operand / value         (DOUBLE, used by INIT/ADD/SUB/MUL/DIV/INC/DEC/NOISE)
- *   INPF  : Param1                  (DOUBLE, cycles/min/window depending on op)
- *   INPG  : Param2                  (DOUBLE, duty/max/amp depending on op)
- *   VALA  : Output waveform         (DOUBLE array, NOVA)
+ *   INPA  : Input waveform (init source)  (DOUBLE array, NOA)
+ *   INPB  : Operation name                (STRING, e.g. "INIT","ADD","PWM")
+ *   INPC  : Range start index             (LONG,   0-based)
+ *   INPD  : Range end index               (LONG,   exclusive, <=0 = full)
+ *   INPE  : Operand / value               (DOUBLE)
+ *   INPF  : Param1                        (DOUBLE, cycles/min/window)
+ *   INPG  : Param2                        (DOUBLE, duty/max/amp)
+ *   INPH  : Index selector                (LONG,   0=both, 1=VALA, 2=VALB)
+ *   VALA  : Output waveform A             (DOUBLE array, NOVA)
+ *   VALB  : Output waveform B             (DOUBLE array, NOVB)
  *
  * ============================================================================
- *  IOC Shell 시험 검증 방법 (caput / caget 사용)
+ *  DB Record Template
+ * ============================================================================
+ *
+ *   record(waveform, "$(P):InputWf") {
+ *       field(NELM, "1024")
+ *       field(FTVL, "DOUBLE")
+ *   }
+ *   record(stringout, "$(P):OpName")    { field(VAL,  "INIT")  }
+ *   record(longout,   "$(P):RangeStart"){ field(VAL,  "0")     }
+ *   record(longout,   "$(P):RangeEnd")  { field(VAL,  "0")     }
+ *   record(ao,        "$(P):Operand")   { field(VAL,  "0.0")   }
+ *   record(ao,        "$(P):Param1")    { field(VAL,  "0.0")   }
+ *   record(ao,        "$(P):Param2")    { field(VAL,  "0.0")   }
+ *   record(longout,   "$(P):Index")     { field(VAL,  "0")     }
+ *
+ *   record(aSub, "$(P):CalcWf") {
+ *       field(INAM, "calcWaveformInit")
+ *       field(SNAM, "calcWaveformProcess")
+ *       field(FTA,  "DOUBLE")
+ *       field(FTB,  "STRING")
+ *       field(FTC,  "LONG")
+ *       field(FTD,  "LONG")
+ *       field(FTE,  "DOUBLE")
+ *       field(FTF,  "DOUBLE")
+ *       field(FTG,  "DOUBLE")
+ *       field(FTH,  "LONG")
+ *       field(FTVA, "DOUBLE")
+ *       field(FTVB, "DOUBLE")
+ *       field(NOA,  "1024")
+ *       field(NOVA, "1024")
+ *       field(NOVB, "1024")
+ *       field(INPA, "$(P):InputWf NPP")
+ *       field(INPB, "$(P):OpName NPP")
+ *       field(INPC, "$(P):RangeStart NPP")
+ *       field(INPD, "$(P):RangeEnd NPP")
+ *       field(INPE, "$(P):Operand NPP")
+ *       field(INPF, "$(P):Param1 NPP")
+ *       field(INPG, "$(P):Param2 NPP")
+ *       field(INPH, "$(P):Index NPP")
+ *       field(OUTA, "$(P):OutputWfA PP")
+ *       field(OUTB, "$(P):OutputWfB PP")
+ *   }
+ *
+ *   record(waveform, "$(P):OutputWfA") {
+ *       field(NELM, "1024")
+ *       field(FTVL, "DOUBLE")
+ *   }
+ *   record(waveform, "$(P):OutputWfB") {
+ *       field(NELM, "1024")
+ *       field(FTVL, "DOUBLE")
+ *   }
+ *
+ * ============================================================================
+ *  IOC Shell 시험 검증 방법 (caput / caget)
  * ============================================================================
  *
  *  공통 매크로: P=TEST
  *  처리 실행:  caput TEST:CalcWf.PROC 1
- *  결과 확인:  caget -# 10 TEST:OutputWf   (앞 10개 요소 출력)
+ *  결과 확인:  caget -# 10 TEST:OutputWfA   (VALA 앞 10개)
+ *              caget -# 10 TEST:OutputWfB   (VALB 앞 10개)
  *
  * --------------------------------------------------------------------------
- *  [1] INIT  — 전체 배열을 특정 값으로 초기화
+ *  [1] Index=0 — VALA + VALB 동시 초기화
  * --------------------------------------------------------------------------
+ *    caput TEST:Index      0
  *    caput TEST:OpName     "INIT"
- *    caput TEST:RangeStart 0
- *    caput TEST:RangeEnd   0          # 0 = 전체 범위
  *    caput TEST:Operand    5.0
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 5.0 5.0 5.0 ...
- *
- *    # 슬라이스 초기화 (인덱스 100~200만 99.0으로)
- *    caput TEST:RangeStart 100
- *    caput TEST:RangeEnd   200
- *    caput TEST:Operand    99.0
- *    caput TEST:CalcWf.PROC 1
- *
- * --------------------------------------------------------------------------
- *  [2] ADD / INC — 값 더하기
- * --------------------------------------------------------------------------
- *    # 사전: INIT 로 전체를 10.0 으로 세팅
- *    caput TEST:OpName     "ADD"
- *    caput TEST:RangeStart 0
- *    caput TEST:RangeEnd   0
- *    caput TEST:Operand    3.0
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 13.0 13.0 13.0 ...
- *
- * --------------------------------------------------------------------------
- *  [3] SUB / DEC — 값 빼기
- * --------------------------------------------------------------------------
- *    caput TEST:OpName     "SUB"
- *    caput TEST:Operand    2.0
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 11.0 11.0 11.0 ...
- *
- * --------------------------------------------------------------------------
- *  [4] MUL — 곱하기
- * --------------------------------------------------------------------------
- *    caput TEST:OpName     "MUL"
- *    caput TEST:Operand    2.0
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 이전값 * 2.0
- *
- * --------------------------------------------------------------------------
- *  [5] DIV — 나누기
- * --------------------------------------------------------------------------
- *    caput TEST:OpName     "DIV"
- *    caput TEST:Operand    4.0
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 이전값 / 4.0
- *
- *    # 에러 케이스: 0으로 나누기 → 반환값 -1, errlog 출력
- *    caput TEST:Operand    0.0
- *    caput TEST:CalcWf.PROC 1         # 에러 로그 확인
- *
- * --------------------------------------------------------------------------
- *  [6] RAND — 난수 생성
- * --------------------------------------------------------------------------
- *    caput TEST:OpName     "RAND"
- *    caput TEST:Param1     10.0       # 최솟값
- *    caput TEST:Param2     90.0       # 최댓값
  *    caput TEST:RangeStart 0
  *    caput TEST:RangeEnd   0
  *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 10.0 ~ 90.0 사이 난수
- *
- *    # 기본값 (Param1=0, Param2=0 이면 0.0~100.0)
- *    caput TEST:Param1     0.0
- *    caput TEST:Param2     0.0
- *    caput TEST:CalcWf.PROC 1
+ *    caget -# 5 TEST:OutputWfA         # 기대: 5.0 5.0 5.0 5.0 5.0
+ *    caget -# 5 TEST:OutputWfB         # 기대: 5.0 5.0 5.0 5.0 5.0
  *
  * --------------------------------------------------------------------------
- *  [7] RAMP — 선형 증가/감소 파형
+ *  [2] Index=1 — VALA 만 SINE 적용
  * --------------------------------------------------------------------------
- *    caput TEST:OpName     "RAMP"
- *    caput TEST:Param1     0.0        # 시작값
- *    caput TEST:Param2     100.0      # 종료값
- *    caput TEST:RangeStart 0
- *    caput TEST:RangeEnd   0
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 0.0, 0.098, 0.196, ... → 100.0
- *
- *    # 역방향 램프
- *    caput TEST:Param1     100.0
- *    caput TEST:Param2     0.0
- *    caput TEST:CalcWf.PROC 1
- *
- * --------------------------------------------------------------------------
- *  [8] SINE — 사인파 생성
- * --------------------------------------------------------------------------
+ *    caput TEST:Index      1
  *    caput TEST:OpName     "SINE"
- *    caput TEST:Param1     3.0        # 주기 횟수 (cycles)
- *    caput TEST:Param2     5.0        # 진폭 (amplitude)
- *    caput TEST:RangeStart 0
- *    caput TEST:RangeEnd   0
+ *    caput TEST:Param1     3.0
+ *    caput TEST:Param2     5.0
  *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 3주기 사인파, 범위 -5.0 ~ +5.0
- *
- *    # 기본값 (Param1=0→1주기, Param2=0→진폭1.0)
- *    caput TEST:Param1     0.0
- *    caput TEST:Param2     0.0
- *    caput TEST:CalcWf.PROC 1
+ *    caget -# 10 TEST:OutputWfA        # 기대: 3주기 사인파 (-5 ~ +5)
+ *    caget -# 10 TEST:OutputWfB        # 기대: 변동 없음 (5.0 유지)
  *
  * --------------------------------------------------------------------------
- *  [9] PWM — 사각파(PWM) 생성
+ *  [3] Index=2 — VALB 만 PWM 적용
  * --------------------------------------------------------------------------
+ *    caput TEST:Index      2
  *    caput TEST:OpName     "PWM"
- *    caput TEST:Param1     5.0        # 주기 횟수 (cycles)
- *    caput TEST:Param2     30.0       # 듀티비 (%)
- *    caput TEST:Operand    1.0        # HIGH 레벨 값 (0이면 기본 1.0)
- *    caput TEST:RangeStart 0
- *    caput TEST:RangeEnd   0
+ *    caput TEST:Param1     5.0
+ *    caput TEST:Param2     30.0
+ *    caput TEST:Operand    3.3
  *    caput TEST:CalcWf.PROC 1
- *    caget -# 20 TEST:OutputWf        # 기대: 30% HIGH(1.0), 70% LOW(0.0) × 5주기
- *
- *    # 진폭 변경
- *    caput TEST:Operand    3.3        # HIGH = 3.3V
- *    caput TEST:CalcWf.PROC 1
+ *    caget -# 10 TEST:OutputWfA        # 기대: 변동 없음 (사인파 유지)
+ *    caget -# 10 TEST:OutputWfB        # 기대: PWM 사각파 (3.3V/0V)
  *
  * --------------------------------------------------------------------------
- *  [10] NOISE — 기존 데이터에 랜덤 노이즈 추가
+ *  [4] Index=0 슬라이스 — 양쪽 동시 부분 연산
  * --------------------------------------------------------------------------
- *    # 사전: RAMP 또는 SINE 으로 기본 파형 생성 후
- *    caput TEST:OpName     "NOISE"
- *    caput TEST:Operand    0.5        # 노이즈 범위: ±0.5
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 원래 값 ± 0.5 범위 내 변동
- *
- * --------------------------------------------------------------------------
- *  [11] SMOOTH — 이동 평균 필터 (노이즈 억제)
- * --------------------------------------------------------------------------
- *    # 사전: NOISE 가 추가된 파형에 적용
- *    caput TEST:OpName     "SMOOTH"
- *    caput TEST:Param1     7.0        # 윈도우 크기 (홀수 권장)
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 부드러워진(smoothed) 파형
- *
- *    # Param1 대신 Operand 로도 윈도우 크기 전달 가능
- *    caput TEST:Param1     0.0
- *    caput TEST:Operand    5.0
- *    caput TEST:CalcWf.PROC 1
- *
- * --------------------------------------------------------------------------
- *  [12] LIMIT — 상·하한 클램핑
- * --------------------------------------------------------------------------
- *    caput TEST:OpName     "LIMIT"
- *    caput TEST:Param1     -2.0       # 하한
- *    caput TEST:Param2     2.0        # 상한
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 모든 값이 -2.0 ~ +2.0 범위 내
- *
- *    # 대칭 클램핑 (Param1=0, Param2=0 이면 ±Operand)
- *    caput TEST:Param1     0.0
- *    caput TEST:Param2     0.0
- *    caput TEST:Operand    1.5
- *    caput TEST:CalcWf.PROC 1         # 기대: -1.5 ~ +1.5 클램핑
- *
- * --------------------------------------------------------------------------
- *  [13] NORM — 0.0 ~ 1.0 정규화
- * --------------------------------------------------------------------------
- *    # 사전: 임의 범위의 파형 데이터 존재
- *    caput TEST:OpName     "NORM"
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 최솟값→0.0, 최댓값→1.0
- *
- *    # 모든 값이 동일한 경우 → 전부 0.0
- *
- * --------------------------------------------------------------------------
- *  [14] ABS — 절대값
- * --------------------------------------------------------------------------
- *    # 사전: SINE 등으로 음수가 포함된 파형 생성
- *    caput TEST:OpName     "ABS"
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 모든 값 >= 0.0
- *
- * --------------------------------------------------------------------------
- *  [15] SQRT — 제곱근 (|x| 의 제곱근)
- * --------------------------------------------------------------------------
- *    # 사전: INIT 또는 RAMP 로 양수 파형 생성
- *    caput TEST:OpName     "SQRT"
- *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: sqrt(|원래값|)
- *
- * --------------------------------------------------------------------------
- *  [16] 슬라이스(Range) 시험 — 부분 영역만 연산 적용
- * --------------------------------------------------------------------------
- *    # 전체를 0으로 초기화 후 인덱스 100~300 구간만 SINE
+ *    caput TEST:Index      0
  *    caput TEST:OpName     "INIT"
  *    caput TEST:Operand    0.0
- *    caput TEST:RangeStart 0
  *    caput TEST:RangeEnd   0
- *    caput TEST:CalcWf.PROC 1
+ *    caput TEST:CalcWf.PROC 1          # 양쪽 전체 0 초기화
  *
- *    caput TEST:OpName     "SINE"
- *    caput TEST:Param1     2.0
- *    caput TEST:Param2     1.0
+ *    caput TEST:OpName     "RAMP"
+ *    caput TEST:Param1     0
+ *    caput TEST:Param2     100
  *    caput TEST:RangeStart 100
  *    caput TEST:RangeEnd   300
  *    caput TEST:CalcWf.PROC 1
- *    # 기대: [0..99]=0.0, [100..299]=사인파, [300..1023]=0.0
+ *    # 기대: 양쪽 모두 [0..99]=0, [100..299]=램프, [300..]=0
  *
  * --------------------------------------------------------------------------
- *  [17] 에러 케이스 시험
+ *  [5] 독립 채널 복합 시나리오
  * --------------------------------------------------------------------------
- *    # 잘못된 범위 (start >= end)
- *    caput TEST:RangeStart 500
- *    caput TEST:RangeEnd   100
- *    caput TEST:CalcWf.PROC 1         # 기대: 에러 로그, 반환값 -1
- *
- *    # 알 수 없는 연산자
- *    caput TEST:OpName     "INVALID"
- *    caput TEST:CalcWf.PROC 1         # 기대: 에러 로그 "unknown operation"
- *
- * --------------------------------------------------------------------------
- *  [18] 복합 시험 시나리오 (여러 연산 연속 적용)
- * --------------------------------------------------------------------------
- *    # 1단계: RAMP 생성 (0→100)
+ *    # VALA: RAMP → NOISE → SMOOTH
+ *    caput TEST:Index 1
  *    caput TEST:OpName "RAMP" && caput TEST:Param1 0 && caput TEST:Param2 100
- *    caput TEST:RangeEnd 0 && caput TEST:CalcWf.PROC 1
+ *    caput TEST:RangeStart 0 && caput TEST:RangeEnd 0
+ *    caput TEST:CalcWf.PROC 1
  *
- *    # 2단계: NOISE 추가 (±5.0)
  *    caput TEST:OpName "NOISE" && caput TEST:Operand 5.0
  *    caput TEST:CalcWf.PROC 1
  *
- *    # 3단계: SMOOTH 적용 (윈도우=7)
  *    caput TEST:OpName "SMOOTH" && caput TEST:Param1 7
  *    caput TEST:CalcWf.PROC 1
  *
- *    # 4단계: LIMIT 클램핑 (10~90)
- *    caput TEST:OpName "LIMIT" && caput TEST:Param1 10 && caput TEST:Param2 90
+ *    # VALB: SINE → ABS → LIMIT
+ *    caput TEST:Index 2
+ *    caput TEST:OpName "SINE" && caput TEST:Param1 4 && caput TEST:Param2 10
  *    caput TEST:CalcWf.PROC 1
  *
- *    # 5단계: NORM 정규화
- *    caput TEST:OpName "NORM"
+ *    caput TEST:OpName "ABS"
  *    caput TEST:CalcWf.PROC 1
- *    caget -# 10 TEST:OutputWf        # 기대: 0.0 ~ 1.0 범위의 부드러운 램프
+ *
+ *    caput TEST:OpName "LIMIT" && caput TEST:Param1 0 && caput TEST:Param2 7
+ *    caput TEST:CalcWf.PROC 1
+ *
+ *    caget -# 10 TEST:OutputWfA        # 기대: 부드러운 램프 (0~100)
+ *    caget -# 10 TEST:OutputWfB        # 기대: |사인| 클램핑 (0~7)
+ *
+ * --------------------------------------------------------------------------
+ *  [6] ADDW / SUBW / MULW / DIVW — 두 waveform 간 사칙연산
+ * --------------------------------------------------------------------------
+ *    # 사전: VALA 와 VALB 를 각각 독립적으로 세팅
+ *    caput TEST:Index 1
+ *    caput TEST:OpName "RAMP" && caput TEST:Param1 0 && caput TEST:Param2 10
+ *    caput TEST:RangeStart 0 && caput TEST:RangeEnd 0
+ *    caput TEST:CalcWf.PROC 1          # VALA = 0,0.01,...,10 (램프)
+ *
+ *    caput TEST:Index 2
+ *    caput TEST:OpName "INIT" && caput TEST:Operand 2.0
+ *    caput TEST:CalcWf.PROC 1          # VALB = 2.0 (전체)
+ *
+ *    # --- ADDW: VALA = VALA + VALB (Index=1) ---
+ *    caput TEST:Index   1
+ *    caput TEST:OpName  "ADDW"
+ *    caput TEST:CalcWf.PROC 1
+ *    caget -# 5 TEST:OutputWfA         # 기대: 2.0, 2.01, 2.02, ... (+2)
+ *    caget -# 5 TEST:OutputWfB         # 기대: 2.0 유지 (변동 없음)
+ *
+ *    # --- SUBW: VALB = VALB - VALA (Index=2) ---
+ *    caput TEST:Index   2
+ *    caput TEST:OpName  "SUBW"
+ *    caput TEST:CalcWf.PROC 1
+ *    caget -# 5 TEST:OutputWfB         # 기대: 2.0 - VALA 값들
+ *    caget -# 5 TEST:OutputWfA         # 기대: 변동 없음
+ *
+ *    # --- MULW: 슬라이스 적용 (100~200 구간만) ---
+ *    caput TEST:Index     1
+ *    caput TEST:OpName    "MULW"
+ *    caput TEST:RangeStart 100
+ *    caput TEST:RangeEnd   200
+ *    caput TEST:CalcWf.PROC 1
+ *    # 기대: VALA[100..199] = VALA[100..199] * VALB[100..199]
+ *    #       나머지 구간 변동 없음
+ *
+ *    # --- DIVW: VALA = VALA / VALB (0 나누기 보호 → 0.0) ---
+ *    caput TEST:Index   1
+ *    caput TEST:OpName  "DIVW"
+ *    caput TEST:RangeStart 0 && caput TEST:RangeEnd 0
+ *    caput TEST:CalcWf.PROC 1
+ *    caget -# 5 TEST:OutputWfA         # 기대: VALA / VALB (element-wise)
+ *
+ *    # --- Index=0: 양쪽 동시 (VALA=A+B, VALB=B+A 독립 적용) ---
+ *    # 사전: 다시 초기 세팅
+ *    caput TEST:Index 0
+ *    caput TEST:OpName "INIT" && caput TEST:Operand 0
+ *    caput TEST:CalcWf.PROC 1
+ *    caput TEST:Index 1
+ *    caput TEST:OpName "RAMP" && caput TEST:Param1 1 && caput TEST:Param2 5
+ *    caput TEST:CalcWf.PROC 1          # VALA = 1~5
+ *    caput TEST:Index 2
+ *    caput TEST:OpName "INIT" && caput TEST:Operand 10
+ *    caput TEST:CalcWf.PROC 1          # VALB = 10
+ *
+ *    caput TEST:Index   0
+ *    caput TEST:OpName  "ADDW"
+ *    caput TEST:RangeStart 0 && caput TEST:RangeEnd 0
+ *    caput TEST:CalcWf.PROC 1
+ *    caget -# 5 TEST:OutputWfA         # 기대: 11, 11.004, ... (원래A + 원래B)
+ *    caget -# 5 TEST:OutputWfB         # 기대: 11, 11.004, ... (원래B + 원래A)
+ *
+ * --------------------------------------------------------------------------
+ *  [7] 에러 케이스
+ * --------------------------------------------------------------------------
+ *    # 잘못된 범위
+ *    caput TEST:RangeStart 500
+ *    caput TEST:RangeEnd   100
+ *    caput TEST:CalcWf.PROC 1          # 에러 로그, 반환값 -1
+ *
+ *    # 알 수 없는 연산자
+ *    caput TEST:OpName "INVALID"
+ *    caput TEST:CalcWf.PROC 1          # 에러 로그 "unknown operation"
+ *
+ *    # 잘못된 Index
+ *    caput TEST:Index 5
+ *    caput TEST:CalcWf.PROC 1          # 에러 로그 "invalid index"
  *
  * ============================================================================
  */
@@ -298,6 +275,8 @@ enum class Op {
     RAND, RAMP, SINE, PWM,
     NOISE, SMOOTH, LIMIT, NORM,
     ABS, SQRT,
+    /* Cross-waveform arithmetic: dest[i] = dest[i] op src[i] */
+    ADDW, SUBW, MULW, DIVW,
     UNKNOWN
 };
 
@@ -311,6 +290,8 @@ Op parseOp(const char *s)
         {"SINE",  Op::SINE},  {"PWM",  Op::PWM},   {"NOISE", Op::NOISE},
         {"SMOOTH",Op::SMOOTH},{"LIMIT",Op::LIMIT}, {"NORM",  Op::NORM},
         {"ABS",   Op::ABS},   {"SQRT", Op::SQRT},
+        {"ADDW",  Op::ADDW},  {"SUBW", Op::SUBW},
+        {"MULW",  Op::MULW},  {"DIVW", Op::DIVW},
     };
     std::string upper(s);
     std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
@@ -470,90 +451,105 @@ void algSqrt(Iter first, Iter last)
                    [](auto x) { return std::sqrt(std::fabs(x)); });
 }
 
-/* ================================================================== */
-/*  aSub functions                                                    */
-/* ================================================================== */
-
-} /* anonymous namespace */
-
-extern "C" {
-
-/**
- * INAM — Initialization.
- * Copies input waveform to output so a valid baseline exists.
- */
-static long calcWaveformInit(aSubRecord *prec)
+/* --- Cross-waveform arithmetic: dest[i] = dest[i] op src[i] ------ */
+template <typename IterD, typename IterS>
+void algAddW(IterD dFirst, IterD dLast, IterS sFirst)
 {
-    auto *inp  = static_cast<epicsFloat64 *>(prec->a);
-    auto *out  = static_cast<epicsFloat64 *>(prec->vala);
-    auto  nIn  = static_cast<long>(prec->noa);
-    auto  nOut = static_cast<long>(prec->nova);
-    long  n    = std::min(nIn, nOut);
+    std::transform(dFirst, dLast, sFirst, dFirst,
+                   [](auto d, auto s) { return d + s; });
+}
 
-    std::copy_n(inp, n, out);
-    if (nOut > n)
-        std::fill(out + n, out + nOut, 0.0);
+template <typename IterD, typename IterS>
+void algSubW(IterD dFirst, IterD dLast, IterS sFirst)
+{
+    std::transform(dFirst, dLast, sFirst, dFirst,
+                   [](auto d, auto s) { return d - s; });
+}
 
-    errlogPrintf("calcWaveformInit: copied %ld elements\n", n);
+template <typename IterD, typename IterS>
+void algMulW(IterD dFirst, IterD dLast, IterS sFirst)
+{
+    std::transform(dFirst, dLast, sFirst, dFirst,
+                   [](auto d, auto s) { return d * s; });
+}
+
+template <typename IterD, typename IterS>
+void algDivW(IterD dFirst, IterD dLast, IterS sFirst)
+{
+    std::transform(dFirst, dLast, sFirst, dFirst,
+                   [](auto d, auto s) { return (s != 0.0) ? d / s : 0.0; });
+}
+
+/* ================================================================== */
+/*  Apply cross-waveform operation: dest[slice] op= src[slice]        */
+/* ================================================================== */
+
+long applyCrossOp(epicsFloat64 *dest, epicsFloat64 *src,
+                  long nDest, long nSrc,
+                  epicsInt32 startIdx, epicsInt32 endIdx,
+                  Op op, const char *label)
+{
+    long total = std::min(nDest, nSrc);
+    if (startIdx < 0) startIdx = 0;
+    if (endIdx <= 0 || endIdx > total) endIdx = static_cast<epicsInt32>(total);
+    if (startIdx >= endIdx) {
+        errlogPrintf("calcWaveformProcess[%s]: invalid cross range [%d, %d)\n",
+                     label, startIdx, endIdx);
+        return -1;
+    }
+
+    auto dFirst = dest + startIdx;
+    auto dLast  = dest + endIdx;
+    auto sFirst = src  + startIdx;
+
+    switch (op) {
+    case Op::ADDW: algAddW(dFirst, dLast, sFirst); break;
+    case Op::SUBW: algSubW(dFirst, dLast, sFirst); break;
+    case Op::MULW: algMulW(dFirst, dLast, sFirst); break;
+    case Op::DIVW: algDivW(dFirst, dLast, sFirst); break;
+    default: return -1;
+    }
     return 0;
 }
 
-/**
- * SNAM — Process.
- * Reads operation string and parameters, applies the algorithm to
- * the specified slice of the output waveform.
- */
-static long calcWaveformProcess(aSubRecord *prec)
+/* ================================================================== */
+/*  Apply operation to a single buffer slice                          */
+/* ================================================================== */
+
+long applyOp(epicsFloat64 *buf, long total,
+             epicsInt32 startIdx, epicsInt32 endIdx,
+             Op op, double operand, double param1, double param2,
+             const char *opStr, const char *label)
 {
-    /* --- Unpack inputs -------------------------------------------- */
-    auto *inp      = static_cast<epicsFloat64 *>(prec->a);
-    auto *opStr    = static_cast<const char *>(prec->b);
-    auto  startIdx = *static_cast<epicsInt32 *>(prec->c);
-    auto  endIdx   = *static_cast<epicsInt32 *>(prec->d);
-    auto  operand  = *static_cast<epicsFloat64 *>(prec->e);
-    auto  param1   = *static_cast<epicsFloat64 *>(prec->f);
-    auto  param2   = *static_cast<epicsFloat64 *>(prec->g);
-
-    auto *out  = static_cast<epicsFloat64 *>(prec->vala);
-    long  nIn  = static_cast<long>(prec->noa);
-    long  nOut = static_cast<long>(prec->nova);
-    long  total = std::min(nIn, nOut);
-
-    /* Copy input -> output first */
-    std::copy_n(inp, total, out);
-
     /* --- Resolve slice -------------------------------------------- */
     if (startIdx < 0) startIdx = 0;
     if (endIdx <= 0 || endIdx > total) endIdx = static_cast<epicsInt32>(total);
     if (startIdx >= endIdx) {
-        errlogPrintf("calcWaveformProcess: invalid range [%d, %d)\n",
-                     startIdx, endIdx);
+        errlogPrintf("calcWaveformProcess[%s]: invalid range [%d, %d)\n",
+                     label, startIdx, endIdx);
         return -1;
     }
 
-    auto first = out + startIdx;
-    auto last  = out + endIdx;
-
-    /* --- Dispatch operation --------------------------------------- */
-    Op op = parseOp(opStr);
+    auto first = buf + startIdx;
+    auto last  = buf + endIdx;
 
     switch (op) {
     /* 1. Arithmetic */
     case Op::INIT: algFill(first, last, operand);          break;
-    case Op::ADD:  /* fall through */
+    case Op::ADD:
     case Op::INC:  algAdd(first, last, operand);           break;
-    case Op::SUB:  /* fall through */
+    case Op::SUB:
     case Op::DEC:  algSub(first, last, operand);           break;
     case Op::MUL:  algMul(first, last, operand);           break;
     case Op::DIV:
         if (operand == 0.0) {
-            errlogPrintf("calcWaveformProcess: division by zero\n");
+            errlogPrintf("calcWaveformProcess[%s]: division by zero\n", label);
             return -1;
         }
         algDiv(first, last, operand);
         break;
 
-    /* 2. Generators  (param1 / param2 carry sub-parameters) */
+    /* 2. Generators */
     case Op::RAND: {
         double lo = param1, hi = param2;
         if (lo == 0.0 && hi == 0.0) { lo = 0.0; hi = 100.0; }
@@ -604,13 +600,145 @@ static long calcWaveformProcess(aSubRecord *prec)
     case Op::ABS:  algAbs(first, last);  break;
     case Op::SQRT: algSqrt(first, last); break;
 
+    /* Cross-waveform ops are not handled here */
+    case Op::ADDW: case Op::SUBW: case Op::MULW: case Op::DIVW:
+        return -1;
+
     case Op::UNKNOWN:
+        errlogPrintf("calcWaveformProcess[%s]: unknown operation '%s'\n",
+                     label, opStr);
+        return -1;
+    }
+    return 0;
+}
+
+/* ================================================================== */
+/*  aSub functions                                                    */
+/* ================================================================== */
+
+} /* anonymous namespace */
+
+extern "C" {
+
+/**
+ * INAM — Initialization.
+ * Copies INPA waveform to both VALA and VALB as initial baseline.
+ */
+static long calcWaveformInit(aSubRecord *prec)
+{
+    auto *inp   = static_cast<epicsFloat64 *>(prec->a);
+    auto *outA  = static_cast<epicsFloat64 *>(prec->vala);
+    auto *outB  = static_cast<epicsFloat64 *>(prec->valb);
+    long  nIn   = static_cast<long>(prec->noa);
+    long  nOutA = static_cast<long>(prec->nova);
+    long  nOutB = static_cast<long>(prec->novb);
+
+    long  nA = std::min(nIn, nOutA);
+    long  nB = std::min(nIn, nOutB);
+
+    std::copy_n(inp, nA, outA);
+    std::copy_n(inp, nB, outB);
+
+    if (nOutA > nA) std::fill(outA + nA, outA + nOutA, 0.0);
+    if (nOutB > nB) std::fill(outB + nB, outB + nOutB, 0.0);
+
+    errlogPrintf("calcWaveformInit: VALA=%ld, VALB=%ld elements initialized\n",
+                 nA, nB);
+    return 0;
+}
+
+/**
+ * SNAM — Process.
+ *
+ * Applies operation IN-PLACE on the selected output buffer(s).
+ * INPA is NOT re-copied each call — outputs accumulate operations.
+ * Use "INIT" operation to reset a buffer to a desired value.
+ *
+ * Index selector (INPH):
+ *   0 = apply to VALA and VALB simultaneously
+ *   1 = apply to VALA only
+ *   2 = apply to VALB only
+ */
+static long calcWaveformProcess(aSubRecord *prec)
+{
+    /* --- Unpack inputs -------------------------------------------- */
+    auto *opStr    = static_cast<const char *>(prec->b);
+    auto  startIdx = *static_cast<epicsInt32 *>(prec->c);
+    auto  endIdx   = *static_cast<epicsInt32 *>(prec->d);
+    auto  operand  = *static_cast<epicsFloat64 *>(prec->e);
+    auto  param1   = *static_cast<epicsFloat64 *>(prec->f);
+    auto  param2   = *static_cast<epicsFloat64 *>(prec->g);
+    auto  index    = *static_cast<epicsInt32 *>(prec->h);
+
+    auto *outA  = static_cast<epicsFloat64 *>(prec->vala);
+    auto *outB  = static_cast<epicsFloat64 *>(prec->valb);
+    long  nOutA = static_cast<long>(prec->nova);
+    long  nOutB = static_cast<long>(prec->novb);
+
+    Op op = parseOp(opStr);
+    if (op == Op::UNKNOWN) {
         errlogPrintf("calcWaveformProcess: unknown operation '%s'\n", opStr);
         return -1;
     }
 
-    errlogPrintf("calcWaveformProcess: op=%s range=[%d,%d) done\n",
-                 opStr, startIdx, endIdx);
+    /* --- Validate index ------------------------------------------- */
+    if (index < 0 || index > 2) {
+        errlogPrintf("calcWaveformProcess: invalid index %d (must be 0,1,2)\n",
+                     index);
+        return -1;
+    }
+
+    long rc = 0;
+    bool isCrossOp = (op == Op::ADDW || op == Op::SUBW ||
+                      op == Op::MULW || op == Op::DIVW);
+
+    if (isCrossOp) {
+        /* ----------------------------------------------------------
+         * Cross-waveform arithmetic: dest[slice] op= src[slice]
+         *   Index=0 : VALA = VALA op VALB,  VALB = VALB op VALA (동시)
+         *             (VALA 먼저 임시복사 후 양쪽 독립 적용)
+         *   Index=1 : VALA = VALA op VALB
+         *   Index=2 : VALB = VALB op VALA
+         * ---------------------------------------------------------- */
+        if (index == 0) {
+            /* 양쪽 동시: VALA op VALB, VALB op VALA
+             * VALA 를 먼저 변경하면 VALB 연산 소스가 오염되므로
+             * VALA 원본을 임시 보관한 뒤 양쪽 독립 적용 */
+            long total = std::min(nOutA, nOutB);
+            std::vector<double> tmpA(outA, outA + total);
+
+            rc = applyCrossOp(outA, outB, nOutA, nOutB,
+                              startIdx, endIdx, op, "VALA=A op B");
+            if (rc != 0) return rc;
+            rc = applyCrossOp(outB, tmpA.data(), nOutB, total,
+                              startIdx, endIdx, op, "VALB=B op A");
+            if (rc != 0) return rc;
+        } else if (index == 1) {
+            rc = applyCrossOp(outA, outB, nOutA, nOutB,
+                              startIdx, endIdx, op, "VALA=A op B");
+            if (rc != 0) return rc;
+        } else {
+            rc = applyCrossOp(outB, outA, nOutB, nOutA,
+                              startIdx, endIdx, op, "VALB=B op A");
+            if (rc != 0) return rc;
+        }
+    } else {
+        /* --- Single-buffer operations ----------------------------- */
+        if (index == 0 || index == 1) {
+            rc = applyOp(outA, nOutA, startIdx, endIdx,
+                         op, operand, param1, param2, opStr, "VALA");
+            if (rc != 0) return rc;
+        }
+
+        if (index == 0 || index == 2) {
+            rc = applyOp(outB, nOutB, startIdx, endIdx,
+                         op, operand, param1, param2, opStr, "VALB");
+            if (rc != 0) return rc;
+        }
+    }
+
+    errlogPrintf("calcWaveformProcess: op=%s idx=%d range=[%d,%d) done\n",
+                 opStr, index, startIdx, endIdx);
     return 0;
 }
 
