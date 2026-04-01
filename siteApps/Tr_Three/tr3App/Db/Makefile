@@ -9,6 +9,7 @@ include $(TOP)/configure/CONFIG
 #DB += xxx.db
 DB += trafficLight.db
 DB += calcASub.db
+DB += aSubExamples.db
 
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add

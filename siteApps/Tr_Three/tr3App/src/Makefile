@@ -18,6 +18,7 @@ tr3_DBD += base.dbd
 # Include dbd files from all support applications:
 #tr3_DBD += xxx.dbd
 tr3_DBD += calcWaveformASub.dbd
+tr3_DBD += aSubExamples.dbd
 tr3_DBD += calc.dbd
 
 # Add all the support libraries needed by this IOC
@@ -27,6 +28,7 @@ tr3_LIBS += calc
 # tr3_registerRecordDeviceDriver.cpp derives from tr3.dbd
 tr3_SRCS += tr3_registerRecordDeviceDriver.cpp
 tr3_SRCS += calcWaveformASub.cpp
+tr3_SRCS += aSubExamples.cpp
 
 # Build the main IOC entry point on workstation OSs.
 tr3_SRCS_DEFAULT += tr3Main.cpp

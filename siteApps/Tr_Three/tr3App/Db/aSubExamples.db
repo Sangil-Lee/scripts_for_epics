@@ -1,0 +1,125 @@
+#======================================================================
+#  aSub 레코드 초급자 교육 예제 DB
+#======================================================================
+#
+#  로드: dbLoadRecords("db/aSubExamples.db", "P=TEST:")
+#
+#
+#######################################################################
+#  예제 1: addTwoValues — 두 수의 덧셈
+#######################################################################
+#
+#  시험:
+#    caput TEST:ValA 3.0
+#    caput TEST:ValB 7.0
+#    caget TEST:Add.VALA             # 기대: 10.0
+#    caput TEST:ValA 100             # 자동 재계산 (CP 링크)
+#    caget TEST:Add.VALA             # 기대: 107.0
+#
+#----------------------------------------------------------------------
+
+record(ao, "$(P)ValA") {
+    field(DESC, "Input A for addition")
+    field(VAL,  "0")
+    field(PREC, "2")
+}
+
+record(ao, "$(P)ValB") {
+    field(DESC, "Input B for addition")
+    field(VAL,  "0")
+    field(PREC, "2")
+}
+
+record(aSub, "$(P)Add") {
+    field(DESC, "A + B example")
+    field(SNAM, "addTwoValues")
+    field(FTA,  "DOUBLE")
+    field(FTB,  "DOUBLE")
+    field(FTVA, "DOUBLE")
+    field(INPA, "$(P)ValA CP")
+    field(INPB, "$(P)ValB CP")
+}
+
+
+#######################################################################
+#  예제 2: linearScale — 1차 함수 변환 (y = a*x + b)
+#######################################################################
+#
+#  시험:
+#    caput TEST:ScaleA  2.0          # 기울기
+#    caput TEST:OffsetB 10.0         # 오프셋
+#    caput TEST:RawVal  5.0
+#    caget TEST:LinScale.VALA        # 기대: 20.0  (= 2*5 + 10)
+#    caput TEST:RawVal  100.0
+#    caget TEST:LinScale.VALA        # 기대: 210.0 (= 2*100 + 10)
+#
+#----------------------------------------------------------------------
+
+record(ao, "$(P)RawVal") {
+    field(DESC, "Raw input value")
+    field(VAL,  "0")
+    field(PREC, "4")
+}
+
+record(ao, "$(P)ScaleA") {
+    field(DESC, "Scale factor (a)")
+    field(VAL,  "1")
+    field(PREC, "4")
+}
+
+record(ao, "$(P)OffsetB") {
+    field(DESC, "Offset (b)")
+    field(VAL,  "0")
+    field(PREC, "4")
+}
+
+record(aSub, "$(P)LinScale") {
+    field(DESC, "y = a*x + b")
+    field(SNAM, "linearScale")
+    field(FTA,  "DOUBLE")
+    field(FTB,  "DOUBLE")
+    field(FTC,  "DOUBLE")
+    field(FTVA, "DOUBLE")
+    field(INPA, "$(P)RawVal CP")
+    field(INPB, "$(P)ScaleA NPP")
+    field(INPC, "$(P)OffsetB NPP")
+}
+
+#######################################################################
+#  예제 3: arrayAccumulator — 배열 누적 카운터
+#######################################################################
+#
+#  시험:
+#    camonitor TEST:AccumWf
+#    # 1초마다 배열의 각 요소가 1씩 증가
+#    #   [1,1,...] → [2,2,...] → [3,3,...] ...
+#
+#    caput TEST:AccReset 1           # 리셋 → [0,0,...]
+#    caput TEST:AccReset 0           # 다시 누적 시작
+#
+#----------------------------------------------------------------------
+
+record(bo, "$(P)AccReset") {
+    field(DESC, "Reset accumulator")
+    field(ZNAM, "Run")
+    field(ONAM, "Reset")
+}
+
+record(aSub, "$(P)Accum") {
+    field(DESC, "Array accumulator (+1/sec)")
+    field(SCAN, "1 second")
+    field(INAM, "arrayAccumulatorInit")
+    field(SNAM, "arrayAccumulatorProc")
+    field(FTA,  "LONG")
+    field(FTVA, "DOUBLE")
+    field(NOA,  "1")
+    field(NOVA, "10")
+    field(INPA, "$(P)AccReset NPP")
+    field(OUTA, "$(P)AccumWf PP")
+}
+
+record(waveform, "$(P)AccumWf") {
+    field(DESC, "Accumulator output waveform")
+    field(NELM, "10")
+    field(FTVL, "DOUBLE")
+}

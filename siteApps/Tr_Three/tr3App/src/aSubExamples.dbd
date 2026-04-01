@@ -1,0 +1,4 @@
+function(addTwoValues)
+function(linearScale)
+function(arrayAccumulatorInit)
+function(arrayAccumulatorProc)

@@ -14,8 +14,8 @@ tr3_registerRecordDeviceDriver pdbbase
 ## Load record instances
 #dbLoadRecords("db/tr3.db","user=ctrluser")
 dbLoadRecords("db/trafficLight.db","P=TrafficLight:")
-dbLoadRecords("db/calcASub.db","P=TEST")
-dbLoadRecords("db/dbProcessingExamples.db","P=TEST")
+#dbLoadRecords("db/dbProcessingExamples.db","P=TEST")
+dbLoadRecords("db/calcASub.db","P=TEST:")
 
 cd "${TOP}/iocBoot/${IOC}"
 iocInit
